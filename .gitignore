@@ -1,0 +1,31 @@
+# ============ Keil MDK 编译产物 ============
+MDK-ARM/Objects/
+MDK-ARM/Listings/
+MDK-ARM/DebugConfig/
+MDK-ARM/RTE/
+*.uvguix.*
+*.uvoptx
+*.bak
+*.dep
+*.d
+*.o
+*.crf
+*.lst
+*.htm
+*.map
+*.axf
+*.elf
+*.hex
+*.bin
+*.lnp
+*.sct
+*.scvd
+
+# ============ VS Code（机器相关配置，不提交） ============
+.vscode/
+
+# ============ 系统 / 编辑器 ============
+.idea/
+*.swp
+Thumbs.db
+Desktop.ini
