@@ -8,7 +8,6 @@
 
 struct RingBuffer {
     uint8_t buffer[RING_BUFFER_SIZE];  // 缓冲区
-    int size;     // 缓冲区大小
     int head;     // 写入位置
     int tail;     // 读取位置
 };
