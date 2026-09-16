@@ -76,3 +76,27 @@ int proto_feed(ProtoParser *p, uint8_t byte)
     }
     return 0;
 }
+
+int proto_build(const ProtoFrame *frame, uint8_t *buffer, uint8_t buffer_size)
+{
+    uint8_t frame_size;
+
+    if (frame == 0 || buffer == 0 || frame->len > PROTO_DATA_MAX)
+        return -1;
+
+    frame_size = (uint8_t)(frame->len + 5);
+    if (buffer_size < frame_size)
+        return -1;
+
+    buffer[0] = PROTO_HEAD;
+    buffer[1] = frame->cmd;
+    buffer[2] = frame->len;
+
+    for (uint8_t i = 0; i < frame->len; i++)
+        buffer[3 + i] = frame->data[i];
+
+    buffer[3 + frame->len] = proto_crc(&buffer[1], frame->len);
+    buffer[4 + frame->len] = PROTO_TAIL;
+
+    return frame_size;
+}

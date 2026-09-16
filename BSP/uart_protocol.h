@@ -47,5 +47,8 @@ uint8_t proto_crc(const uint8_t *cmd_ptr, uint8_t len);
 /* 逐字节喂入，返回 0 表示还没凑够一帧；返回 1 表示凑齐了一整帧(结果在 parser->frame) */
 int proto_feed(ProtoParser *p, uint8_t byte);
 
+/* 组装完整帧，成功返回帧长度，失败返回 -1 */
+int proto_build(const ProtoFrame *frame, uint8_t *buffer, uint8_t buffer_size);
+
 
 #endif /* UART_PROTOCOL_H */

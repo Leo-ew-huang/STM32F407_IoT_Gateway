@@ -26,6 +26,9 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "app_test_task.h"
+#include "app_uart_rx_task.h"
+#include "uart_protocol.h"   /* 队列要装 ProtoFrame，需要该类型 */
+#include "queue.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -45,7 +48,7 @@
 
 /* Private variables ---------------------------------------------------------*/
 /* USER CODE BEGIN Variables */
-
+QueueHandle_t  uart_frame_queue;   /* 存完整协议帧的队列(UART任务->业务任务) */
 /* USER CODE END Variables */
 /* Definitions for defaultTask */
 osThreadId_t defaultTaskHandle;
@@ -88,6 +91,7 @@ void MX_FREERTOS_Init(void) {
 
   /* USER CODE BEGIN RTOS_QUEUES */
   /* add queues, ... */
+  uart_frame_queue = xQueueCreate(10, sizeof(ProtoFrame));
   /* USER CODE END RTOS_QUEUES */
 
   /* Create the thread(s) */
@@ -97,6 +101,11 @@ void MX_FREERTOS_Init(void) {
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
   if(xTaskCreate(app_test, "app_test", 128, NULL, osPriorityNormal, NULL) != pdPASS)
+  {
+      Error_Handler();
+  }
+  /* UART 接收任务(生产者)：读RingBuffer->喂协议->出帧进队列 */
+  if(xTaskCreate(app_uart_rx_task, "uart_rx", 256, NULL, osPriorityAboveNormal, NULL) != pdPASS)
   {
       Error_Handler();
   }
