@@ -6,4 +6,6 @@
 
 void app_test(void *argument);
 
+void app_at_test(void *argument);
+
 #endif /* APP_TEST_TASK_H */

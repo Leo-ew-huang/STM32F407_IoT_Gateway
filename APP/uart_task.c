@@ -1,4 +1,9 @@
 #include "uart_task.h"
+#include "FreeRTOS.h"
+#include "task.h"      /* xTaskGetTickCount */
+#include "semphr.h"    /* 信号量 */
+
+struct RingBuffer uart2_ringbuf;    /* ← 定义：变量本体，在这里分配内存 */
 
 
 /* UART2(ESP8266)通信统计, 用于调试 */
@@ -27,12 +32,6 @@ static SemaphoreHandle_t uart2_rx_sem;
 static uint8_t uart2_rx_buf[RING_BUFFER_SIZE];
 
 /*
- * 给上层 APP 用的环形缓冲区：
- * 回调把 DMA 暂存区的"新字节"搬进来，APP 任务可以随时安全地 rb_read。
- */
-RingBuffer uart2_ringbuf;
-
-/*
  * 记录"上一次已经处理到 uart2_rx_buf 的哪个位置"。
  * 下一次回调就从这个位置继续，把新到的字节增量搬进 RingBuffer，
  * 从而不漏、不重。
@@ -59,7 +58,7 @@ void uart2_rx_start(void)
 
 int uart2_send(const uint8_t *data, uint16_t len)
 {
-    if(HAL_UART_Transmit(data, len, 1000) == HAL_OK)
+    if(HAL_UART_Transmit(&huart2, (uint8_t *)data, len, 1000) == HAL_OK)
     {
         g_uart2_tx_ok++;
         return 0; 
@@ -76,11 +75,11 @@ int uart2_receive_blocking(uint8_t *data, uint32_t timeout_ms)
     TickType_t t0 = xTaskGetTickCount();
    while(1)
    {
-        if(rb_read(&uart2_ringbuf, data, 1) == 0)
+        if(rb_read(&uart2_ringbuf, data) == 0)
             return 0;
-        else if(xTaskGetTickCount() - t0 > timeout_ms)
+        else if(xTaskGetTickCount() - t0 > pdMS_TO_TICKS(timeout_ms))
             return -1;
-        xSemaphoreTake(uart2_rx_sem, xTaskGetTickCount() - t0);
+        xSemaphoreTake(uart2_rx_sem, pdMS_TO_TICKS(timeout_ms)-((xTaskGetTickCount() - t0)));
    }
 }
 void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
@@ -121,10 +120,10 @@ void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size)
     while (last_pos != head)
     {
         /* 若缓冲区已满则丢弃新数据并退出，避免在中断里死循环 */
-        if (rb_write(&uart2_ringbuf, uart2_rx_buf[last_pos]) != 0)
-        {
+        if (rb_write(&uart2_ringbuf, uart2_rx_buf[last_pos]) == 0)
+            g_uart2_rx_bytes++;
+        else
             break;
-        }
         last_pos = (last_pos + 1) % RING_BUFFER_SIZE;
     }
 

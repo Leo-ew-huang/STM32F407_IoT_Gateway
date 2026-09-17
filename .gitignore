@@ -3,6 +3,7 @@ MDK-ARM/Objects/
 MDK-ARM/Listings/
 MDK-ARM/DebugConfig/
 MDK-ARM/RTE/
+MDK-ARM/F407_IoT_Gateway/   /* 新版Keil输出目录(.axf/.map/中间文件) */
 *.uvguix.*
 *.uvoptx
 *.bak

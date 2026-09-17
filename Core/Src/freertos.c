@@ -100,15 +100,17 @@ void MX_FREERTOS_Init(void) {
 
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
-  if(xTaskCreate(app_test, "app_test", 128, NULL, osPriorityNormal, NULL) != pdPASS)
+  if(xTaskCreate(app_at_test, "app_at_test", 256, NULL, osPriorityNormal, NULL) != pdPASS)
   {
       Error_Handler();
   }
   /* UART 接收任务(生产者)：读RingBuffer->喂协议->出帧进队列 */
+  /*
   if(xTaskCreate(app_uart_rx_task, "uart_rx", 256, NULL, osPriorityAboveNormal, NULL) != pdPASS)
   {
       Error_Handler();
   }
+  */
 
   /* USER CODE END RTOS_THREADS */
 

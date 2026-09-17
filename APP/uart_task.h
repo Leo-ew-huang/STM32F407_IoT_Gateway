@@ -4,10 +4,16 @@
 #include "usart.h"          /* huart2、hdma_usart2_rx */
 #include "uart_ringbuf.h"
 
-extern volatile uint32_t g_uart2_rx_bytes = 0;
-extern volatile uint32_t g_uart2_tx_ok = 0;
-extern volatile uint32_t g_uart2_tx_fail = 0;
-extern volatile uint32_t g_uart2_err_cnt = 0;
+/*
+ * 上层(APP)读取 UART2 收到的原始字节流用。
+ * 解析任务通过 rb_read(&uart2_ringbuf, ...) 取出字节。
+ */
+extern struct RingBuffer uart2_ringbuf;
+
+extern volatile uint32_t g_uart2_rx_bytes;
+extern volatile uint32_t g_uart2_tx_ok;
+extern volatile uint32_t g_uart2_tx_fail;
+extern volatile uint32_t g_uart2_err_cnt;
 
 
 
@@ -18,10 +24,8 @@ extern volatile uint32_t g_uart2_err_cnt = 0;
  */
 void uart2_rx_start(void);
 
-/*
- * 上层(APP)读取 UART2 收到的原始字节流用。
- * 解析任务通过 rb_read(&uart2_ringbuf, ...) 取出字节。
- */
-extern RingBuffer uart2_ringbuf;
+int uart2_send(const uint8_t *data, uint16_t len);
+int uart2_receive_blocking(uint8_t *data, uint32_t timeout_ms);
+
 
 #endif /* UART_TASK_H */
