@@ -4,6 +4,13 @@
 #include "usart.h"          /* huart2、hdma_usart2_rx */
 #include "uart_ringbuf.h"
 
+extern volatile uint32_t g_uart2_rx_bytes = 0;
+extern volatile uint32_t g_uart2_tx_ok = 0;
+extern volatile uint32_t g_uart2_tx_fail = 0;
+extern volatile uint32_t g_uart2_err_cnt = 0;
+
+
+
 /*
  * 启动 UART2(ESP8266) 接收：
  * 配置一次 DMA 空闲中断接收，之后 DMA 自动循环接收，

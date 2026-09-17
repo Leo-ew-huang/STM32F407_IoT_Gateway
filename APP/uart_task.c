@@ -1,6 +1,14 @@
 #include "uart_task.h"
 
 
+/* UART2(ESP8266)通信统计, 用于调试 */
+volatile uint32_t g_uart2_rx_bytes = 0;
+volatile uint32_t g_uart2_tx_ok = 0;
+volatile uint32_t g_uart2_tx_fail = 0;
+volatile uint32_t g_uart2_err_cnt = 0;
+
+static SemaphoreHandle_t uart2_rx_sem;
+
 /*
  * DMA 直接写入的原始暂存数组（暂存区）。
  *
@@ -37,6 +45,9 @@ static uint16_t last_pos = 0;
  */
 void uart2_rx_start(void)
 {
+    if (uart2_rx_sem == NULL ) /* 只建一次 */
+        uart2_rx_sem = xSemaphoreCreateBinary();
+
     /* 复位接收状态：RingBuffer 头尾清零 + 记录位置清零。
        两者必须成对复位，语义才一致；这样重新调用本函数可干净重启接收。 */
     rb_init(&uart2_ringbuf);
@@ -45,6 +56,44 @@ void uart2_rx_start(void)
     /* 开启"空闲中断 + DMA 接收"：收到一帧(总线空闲)时触发回调 */
     HAL_UARTEx_ReceiveToIdle_DMA(&huart2, uart2_rx_buf, RING_BUFFER_SIZE);
 }
+
+int uart2_send(const uint8_t *data, uint16_t len)
+{
+    if(HAL_UART_Transmit(data, len, 1000) == HAL_OK)
+    {
+        g_uart2_tx_ok++;
+        return 0; 
+    }
+    else
+    {
+        g_uart2_tx_fail++;
+        return -1;
+    }
+}
+
+int uart2_receive_blocking(uint8_t *data, uint32_t timeout_ms)
+{
+    TickType_t t0 = xTaskGetTickCount();
+   while(1)
+   {
+        if(rb_read(&uart2_ringbuf, data, 1) == 0)
+            return 0;
+        else if(xTaskGetTickCount() - t0 > timeout_ms)
+            return -1;
+        xSemaphoreTake(uart2_rx_sem, xTaskGetTickCount() - t0);
+   }
+}
+void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
+{
+    if(huart != &huart2)
+        return;
+    g_uart2_err_cnt++;
+    __HAL_UART_CLEAR_FLAG(huart, UART_FLAG_ORE | UART_FLAG_FE | UART_FLAG_NE | UART_FLAG_PE);
+    last_pos = 0;
+    HAL_UARTEx_ReceiveToIdle_DMA(&huart2, uart2_rx_buf, RING_BUFFER_SIZE);
+}
+
+
 
 /**
  * @brief UART 接收事件回调（HAL 自动触发，运行在中断上下文）。
@@ -58,6 +107,7 @@ void uart2_rx_start(void)
 void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size)
 {
     (void)Size; /* 本工程 CIRcular 模式下不依赖此参数，避免未使用告警 */
+    BaseType_t xHigherPriorityTaskWoken = pdFALSE;
 
     if (huart != &huart2)
     {
@@ -86,4 +136,7 @@ void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size)
      *    此行显式把被丢弃的旧数据"标记为已处理"，下次直接从新位置继续。
      */
     last_pos = head;
+
+    xSemaphoreGiveFromISR(uart2_rx_sem, &xHigherPriorityTaskWoken);
+    portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
 }
