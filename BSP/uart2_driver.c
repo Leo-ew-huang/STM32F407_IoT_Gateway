@@ -1,4 +1,4 @@
-#include "uart_task.h"
+#include "uart2_driver.h"
 #include "FreeRTOS.h"
 #include "task.h"      /* xTaskGetTickCount */
 #include "semphr.h"    /* 信号量 */
@@ -70,12 +70,12 @@ int uart2_send(const uint8_t *data, uint16_t len)
     }
 }
 
-int uart2_receive_blocking(uint8_t *data, uint32_t timeout_ms)
+int uart2_receive_blocking(uint8_t *byte, uint32_t timeout_ms)
 {
     TickType_t t0 = xTaskGetTickCount();
    while(1)
    {
-        if(rb_read(&uart2_ringbuf, data) == 0)
+        if(rb_read(&uart2_ringbuf, byte) == 0)
             return 0;
         else if(xTaskGetTickCount() - t0 > pdMS_TO_TICKS(timeout_ms))
             return -1;

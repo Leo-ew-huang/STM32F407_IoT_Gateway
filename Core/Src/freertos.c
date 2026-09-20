@@ -25,9 +25,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#include "app_test_task.h"
-#include "app_uart_rx_task.h"
-#include "uart_protocol.h"   /* 队列要装 ProtoFrame，需要该类型 */
+#include "at_test_task.h"
 #include "queue.h"
 /* USER CODE END Includes */
 
@@ -91,7 +89,9 @@ void MX_FREERTOS_Init(void) {
 
   /* USER CODE BEGIN RTOS_QUEUES */
   /* add queues, ... */
-  uart_frame_queue = xQueueCreate(10, sizeof(ProtoFrame));
+	
+  //uart_frame_queue = xQueueCreate(10, sizeof(ProtoFrame));
+	
   /* USER CODE END RTOS_QUEUES */
 
   /* Create the thread(s) */
@@ -107,6 +107,11 @@ void MX_FREERTOS_Init(void) {
       Error_Handler();
   }
   */
+
+  if(xTaskCreate(at_test_task, "at_test_task", 256, NULL, osPriorityAboveNormal, NULL) != pdPASS)
+  {
+      Error_Handler();
+  }
 
   /* USER CODE END RTOS_THREADS */
 

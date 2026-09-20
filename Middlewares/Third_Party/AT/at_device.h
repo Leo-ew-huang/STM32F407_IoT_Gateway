@@ -67,7 +67,4 @@ PAT_Device at_get_device(void);
 
 
 
-
-
-
 #endif /*AT_DEVICE_H */ 

@@ -336,7 +336,7 @@
               <MiscControls></MiscControls>
               <Define>USE_HAL_DRIVER,STM32F407xx</Define>
               <Undefine></Undefine>
-              <IncludePath>../Core/Inc;../Drivers/STM32F4xx_HAL_Driver/Inc;../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy;../Middlewares/Third_Party/FreeRTOS/Source/include;../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2;../Middlewares/Third_Party/FreeRTOS/Source/portable/RVDS/ARM_CM4F;../Drivers/CMSIS/Device/ST/STM32F4xx/Include;../Drivers/CMSIS/Include;..\APP;..\BSP</IncludePath>
+              <IncludePath>../Core/Inc;../Drivers/STM32F4xx_HAL_Driver/Inc;../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy;../Middlewares/Third_Party/FreeRTOS/Source/include;../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2;../Middlewares/Third_Party/FreeRTOS/Source/portable/RVDS/ARM_CM4F;../Drivers/CMSIS/Device/ST/STM32F4xx/Include;../Drivers/CMSIS/Include;..\APP;..\BSP;..\Middlewares\Third_Party\AT</IncludePath>
             </VariousControls>
           </Cads>
           <Aads>
@@ -591,9 +591,9 @@
               <FilePath>..\APP\app_test_task.c</FilePath>
             </File>
             <File>
-              <FileName>uart_task.c</FileName>
+              <FileName>at_test_task.c</FileName>
               <FileType>1</FileType>
-              <FilePath>..\APP\uart_task.c</FilePath>
+              <FilePath>..\APP\at_test_task.c</FilePath>
             </File>
           </Files>
         </Group>
@@ -604,6 +604,26 @@
               <FileName>uart_ringbuf.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\BSP\uart_ringbuf.c</FilePath>
+            </File>
+            <File>
+              <FileName>uart2_driver.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\BSP\uart2_driver.c</FilePath>
+            </File>
+            <File>
+              <FileName>uart_protocol.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\BSP\uart_protocol.c</FilePath>
+            </File>
+            <File>
+              <FileName>at_core.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Middlewares\Third_Party\AT\at_core.c</FilePath>
+            </File>
+            <File>
+              <FileName>at_port_uart2.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Middlewares\Third_Party\AT\at_port_uart2.c</FilePath>
             </File>
           </Files>
         </Group>

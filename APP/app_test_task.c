@@ -5,7 +5,7 @@
 #include "task.h"
 #include "cmsis_os.h"
 #include "uart_protocol.h"   /* ProtoFrame、CMD_* 枚举 */
-#include "uart_task.h"       /* g_uart2_* 统计计数器 */
+#include "uart2_driver.h"    /* g_uart2_* 统计计数器 */
 
 /*
  * 业务队列（由 freertos.c 创建，UART 生产者任务往里放完整帧，
@@ -92,7 +92,7 @@ void app_test(void *argument)
 
         case CMD_BUZZER:
             if (rx.len == 1)
-                printf("蜂鸣器: %s\r\n", rx.data[0] ? "ON" : "OFF");
+                printf("buzzer: %s\r\n", rx.data[0] ? "ON" : "OFF");
             else
                 printf("buzzer len err=%u\r\n", rx.len);
             break;

@@ -3,7 +3,7 @@
 #include "queue.h"
 #include "cmsis_os.h"
 
-#include "uart_task.h"        /* uart2_rx_start, uart2_ringbuf */
+#include "uart2_driver.h"     /* uart2_rx_start, uart2_ringbuf */
 #include "uart_ringbuf.h"
 #include "uart_protocol.h"
 

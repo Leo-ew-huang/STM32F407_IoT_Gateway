@@ -1,5 +1,5 @@
-#ifndef UART_TASK_H
-#define UART_TASK_H
+#ifndef UART2_DRIVER_H
+#define UART2_DRIVER_H
 
 #include "usart.h"          /* huart2、hdma_usart2_rx */
 #include "uart_ringbuf.h"
@@ -25,7 +25,7 @@ extern volatile uint32_t g_uart2_err_cnt;
 void uart2_rx_start(void);
 
 int uart2_send(const uint8_t *data, uint16_t len);
-int uart2_receive_blocking(uint8_t *data, uint32_t timeout_ms);
+int uart2_receive_blocking(uint8_t *byte, uint32_t timeout_ms);
 
 
-#endif /* UART_TASK_H */
+#endif /* UART2_DRIVER_H */
