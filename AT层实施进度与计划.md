@@ -73,6 +73,9 @@ at_socket/  百问网参考库(不进编译)
 - [x] AT-4 port 层 at_port_uart2.c/h（用户手写; review 修正: 表初始化补'='、static原型移出头文件、函数先于表定义; 4道思考题已过）
 - [x] AT-5 core 层 at_core.c（agent 写: 攒行+OK/ERROR/FAIL/'>'识别、resp拼接截断保护、锁+信号量一问一答、探活重试10×500ms; 未 include uart2_driver.h 铁律遵守）
 - [x] AT-6 任务3 调用点集成（app_at_test + freertos.c 建任务, 用户写; **硬件验收通过**: 周期性 `AT -> 0, resp=[AT\r\n\r\nOK\r\n]`, 回显开启状态下非OK行只进缓冲不按门铃）
+- [x] AT-7 core 加固·回显免疫（设计演进: 最初想把ATE0放module层 → 用户指出防线应归core → 加了at_set_echo → 用户再指出"core不认命令"铁律被违背 → **最终方案: 解析器回显免疫**(跳过与last_cmd相同的行, last_cmd由at_exec_cmd发送前记录) + 探活/ATE0 移交module层; at_set_echo已删, at_init只建资源不做I/O）
+- [x] AT-8 module 层 esp8266.c（用户手写: esp8266_init(port)=at_init+探活重试+ATE0不判死+CWMODE; review 修正: i作用域/port注入/.h空参括号; **硬件验收通过**）
+- [x] AT-9 修复 core 解析器 strstr 残留 bug（agent 的 bug: line[]跨行复用但从不补'\0', 空行继承上一行"OK"字节→strstr误匹配→门铃提前响→resp只剩"\r\n"但返回0; 修复: '\n'分支开头 line[len]='\0'。C经典三连坑: 缓冲区复用+未终止字符串+strstr）
 
 ## 五、当前任务（下一步，用户回家后从这里继续）
 
@@ -114,7 +117,7 @@ at_socket/  百问网参考库(不进编译)
 
 ## 六、后续里程碑
 
-- **AT-5 WiFi**: esp8266.c(module 层, 引导用户写): AT+CWMODE=1 → AT+CWJAP(10s超时) → AT+CIFSR 查IP
+- **AT-5 WiFi**: esp8266.c(module 层, 引导用户写): `esp8266_init(const AT_PORT *port)`: at_init(port) → 探活 "AT" 重试10×500ms → ATE0 关回显(回显免疫后是卫生习惯非安全必需, resp更干净省流量) → AT+CWMODE=1 → AT+CWJAP(10s超时) → AT+CIFSR 查IP。**注意**: core 的 at_init 现在只建资源不做 I/O, 上电序列全归这里
 - **AT-6 TCP**: AT+CIPMUX=0 → AT+CIPSTART="TCP","host",port → AT+CIPSEND(注意'>'提示符特判) → +IPD 分流(解析任务里识别"+IPD,<len>:"不算命令应答)
 - **AT-7 Paho MQTT**: 移植 paho.mqtt.embedded-c 的 MQTTPacket, 桥接 transport_sendPacketBuffer/transport_getdata/Timer 四函数到 module 层 5 个 net_xxx
 - 老规矩：每个里程碑"用户写关键代码 + agent review"，硬件验收后 commit push

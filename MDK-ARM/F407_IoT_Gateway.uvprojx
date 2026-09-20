@@ -615,15 +615,25 @@
               <FileType>1</FileType>
               <FilePath>..\BSP\uart_protocol.c</FilePath>
             </File>
+          </Files>
+        </Group>
+        <Group>
+          <GroupName>Middlewares/AT</GroupName>
+          <Files>
+            <File>
+              <FileName>at_port_uart2.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Middlewares\Third_Party\AT\at_port_uart2.c</FilePath>
+            </File>
             <File>
               <FileName>at_core.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\Middlewares\Third_Party\AT\at_core.c</FilePath>
             </File>
             <File>
-              <FileName>at_port_uart2.c</FileName>
+              <FileName>esp8266.c</FileName>
               <FileType>1</FileType>
-              <FilePath>..\Middlewares\Third_Party\AT\at_port_uart2.c</FilePath>
+              <FilePath>..\Middlewares\Third_Party\AT\esp8266.c</FilePath>
             </File>
           </Files>
         </Group>

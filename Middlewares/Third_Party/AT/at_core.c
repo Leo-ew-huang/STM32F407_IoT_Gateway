@@ -3,11 +3,14 @@
  *
  * 职责:
  *   1. at_exec_cmd  : 发命令 → 等"应答结束"信号量 → 返回结论
- *   2. at_parse_task: 常驻后台, 把字节流攒成行, 识别应答结束标志(OK/ERROR/FAIL/'>'提示符)
- *   3. at_init      : 注入 port 适配表 + 创建同步对象 + 启动解析任务 + 探活
+ *   2. at_parse_task: 常驻后台, 把字节流攒成行, 识别应答结束标志(OK/ERROR/FAIL/'>'提示符),
+ *                     并跳过与刚发命令相同的回显行(回显免疫)
+ *   3. at_init      : 注入 port 适配表 + 创建同步对象 + 启动解析任务(只建资源, 不做 I/O)
  *
  * 铁律: 本文件禁止 include 任何具体硬件驱动头文件(uart2_driver.h 等),
  *       收发只走 dev->port-> 函数指针 —— 换硬件 = 重写 port 层, 本文件一行不改。
+ *       同理 core 不认识任何具体 AT 命令: 探活("AT")/关回显("ATE0")等
+ *       命令序列全部归 module 层, core 靠"回显免疫"自保而非依赖 ATE0。
  */
 #include "at_device.h"
 #include "FreeRTOS.h"
@@ -19,8 +22,6 @@
 /* 单例: 本工程只有一个 WIFI 模块, 不做设备注册表 */
 static AT_Device g_at_dev;
 
-/* 命令缓冲: CWJAP 带 ssid/passwor 最长约百字节, 160 够用 */
-#define AT_CMD_BUF_LEN   160
 /* 攒行缓冲: AT 应答单行远达不到 128 */
 #define AT_LINE_BUF_LEN  128
 
@@ -79,6 +80,23 @@ static void at_parse_task(void *arg)
 
         if (byte == '\n')
         {
+            /* ★ 截断残留: len=0 只表示"本行没攒到字节", line[] 里还躺着
+             * 上一行的旧字节。不补 '\0' 的话, strstr 会对空行误匹配出
+             * 上一行的 "OK" → 门铃提前响 → 应答错位。C 经典三连坑:
+             * 缓冲区复用 + 未终止字符串 + strlen/strstr 类函数 */
+            line[len] = '\0';
+
+            /* 回显免疫: 与刚发出的命令一字不差的行 = 模块回显, 整行跳过
+             * (不进 resp、不参与 OK/ERROR 判定)。无论回显开/关/被 RST 复活,
+             * 命令文本里的 OK/ERROR 子串(如 ssid 带"OK")都不会误触发门铃 */
+            if (len > 0 && dev->last_cmd_len > 0 &&
+                len == dev->last_cmd_len &&
+                memcmp(line, dev->last_cmd, len) == 0)
+            {
+                len = 0;
+                continue;
+            }
+
             /* 行结束: 先拼进完整应答, 再判断是不是命令结束标志 */
             resp_append(dev, line, len);
 
@@ -130,6 +148,13 @@ int at_exec_cmd(const char *cmd, uint32_t timeout_ms)
         cmd_len--;
     if (cmd_len > AT_CMD_BUF_LEN - 3)
         cmd_len = AT_CMD_BUF_LEN - 3;
+
+    /* 记住命令原文(无\r\n), 解析任务靠它识别并跳过回显行。
+     * 必须在发送前写入: 回显字节只会在发送之后到达, 到时 last_cmd 必已就位 */
+    memcpy(dev->last_cmd, cmd, cmd_len);
+    dev->last_cmd[cmd_len] = '\0';
+    dev->last_cmd_len = (uint16_t)cmd_len;
+
     memcpy(buf, cmd, cmd_len);
     buf[cmd_len++] = '\r';
     buf[cmd_len++] = '\n';
@@ -153,13 +178,13 @@ int at_exec_cmd(const char *cmd, uint32_t timeout_ms)
 }
 
 /*=====================================================================
- * 初始化: 注入 port + 建同步对象 + 启动解析任务 + 探活
+ * 初始化: 注入 port + 建同步对象 + 启动解析任务
+ * 只创建资源, 不做任何 I/O、不认识任何命令 —— 探活("AT")、关回显("ATE0")
+ * 等模块上电序列归 module 层的 xxx_init() 负责。
  * 必须在任务上下文调用(内部创建 FreeRTOS 对象)
  *=====================================================================*/
 int at_init(const AT_PORT *port)
 {
-    int i;
-
     if (port == NULL)
         return -1;
     g_at_dev.port = port;   /* 注入后 port 表只读, core 不再改 */
@@ -168,6 +193,8 @@ int at_init(const AT_PORT *port)
     g_at_dev.at_sem  = xSemaphoreCreateBinary();
     if (g_at_dev.at_lock == NULL || g_at_dev.at_sem == NULL)
         return -1;
+
+    g_at_dev.last_cmd_len = 0;
 
     /* port 的硬件初始化是可选的: 实现了就调, 没实现(NULL)就跳过 */
     if (port->init != NULL && port->init() != 0)
@@ -178,14 +205,7 @@ int at_init(const AT_PORT *port)
                     osPriorityNormal, NULL) != pdPASS)
         return -1;
 
-    /* 探活: 模块上电到就绪可能要几秒, 重试 "AT" 直到回 OK */
-    for (i = 0; i < 10; i++)
-    {
-        if (at_exec_cmd("AT", 500) == AT_RESP_OK)
-            return 0;
-        vTaskDelay(pdMS_TO_TICKS(500));
-    }
-    return -1;   /* 10 次都无应答: 模块不在/接线/波特率问题 */
+    return 0;
 }
 
 /* 上层读完整应答内容用 */

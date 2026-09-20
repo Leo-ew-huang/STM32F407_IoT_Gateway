@@ -2,15 +2,16 @@
 #include "at_test_task.h"
 #include "at_device.h"
 #include "at_port_uart2.h"
+#include "esp8266.h"
 
 void at_test_task(void *argument)
 {
     int r;
-    if (at_init(&at_port_stm32_uart2) != 0) {
-        printf("at_init fail\r\n");
+    if (esp8266_init(&at_port_stm32_uart2) != 0) {
+        printf("esp8266_init fail\r\n");
         vTaskDelete(NULL);
     }
-    printf("at_init OK\r\n");
+    printf("esp8266_init OK\r\n");
     for (;;)
     {
         r = at_exec_cmd("AT", 1000);

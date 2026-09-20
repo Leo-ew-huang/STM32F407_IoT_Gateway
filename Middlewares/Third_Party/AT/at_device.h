@@ -6,6 +6,7 @@
 #include "semphr.h"
 
 #define AT_RESP_BUF_LEN 256     /* 应答缓冲: 存一条命令的完整应答(多行拼接) */
+#define AT_CMD_BUF_LEN  160     /* 命令文本最长长度(CWJAP 带账号密码够用) */
 
 /*
  * 一条 AT 命令的执行结果。
@@ -45,13 +46,18 @@ typedef struct AT_Device
     uint8_t resp_buf[AT_RESP_BUF_LEN];
     uint32_t resp_len;              /* resp_buf 里的有效字节数 */
     AT_RespStatus resp_status;      /* 最近一条命令的结果 */
+    /* 刚发出的命令原文(无\r\n): 解析任务靠它识别并跳过回显行。
+     * 回显免疫让 core 在不认识任何命令的前提下, 也不怕回显里的
+     * OK/ERROR 子串误触发 —— 探活/ATE0 因此可以放心放去 module 层 */
+    uint8_t  last_cmd[AT_CMD_BUF_LEN];
+    uint16_t last_cmd_len;
 } AT_Device, *PAT_Device;
 
 
 /*
  * 初始化 AT 层: 注入 port 表 + 建同步对象 + 启动后台解析任务。
- * 必须在任务上下文调用(内部会创建 FreeRTOS 对象)。
- * 成功返回 0, 失败返回 -1。
+ * 只创建资源, 不做任何 I/O; 探活/关回显等命令序列归 module 层。
+ * 必须在任务上下文调用。成功返回 0, 失败返回 -1。
  */
 int at_init(const AT_PORT *port);
 
