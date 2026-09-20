@@ -5,6 +5,7 @@
 #include "task.h"
 #include "cmsis_os.h"
 #include "uart_protocol.h"   /* ProtoFrame、CMD_* 枚举 */
+#include "uart_task.h"       /* g_uart2_* 统计计数器 */
 
 /*
  * 业务队列（由 freertos.c 创建，UART 生产者任务往里放完整帧，
@@ -118,23 +119,3 @@ void app_test(void *argument)
     }
 }
 
-void app_at_test(void *argument)
-{
-    uart2_rx_start();
-    while(1)
-    {
-        printf ( "\r\n>>> send AT\r\n" );
-        uart2_send("AT\r\n", 4);
-        printf ( "\r\n>>> wait AT response\r\n" );
-        TickType_t t0 = xTaskGetTickCount();
-        while (xTaskGetTickCount() - t0 < pdMS_TO_TICKS( 500 ))
-        {
-            uint8_t  ch;
-            if(uart2_receive_blocking(&ch, 1) == 0)
-                printf("%c", ch);
-        }
-        printf ( "\r\n--- rx=%lu tx_ok=%lu tx_fail=%lu err=%lu ---\r\n" ,
-           g_uart2_rx_bytes, g_uart2_tx_ok, g_uart2_tx_fail, g_uart2_err_cnt);
-        vTaskDelay(pdMS_TO_TICKS(1000));
-    }
-}
