@@ -1,7 +1,7 @@
 # AT 层实施进度与计划（跨环境 Handoff 文档）
 
 > 本文档供两台工作环境（公司/家）之间同步进度使用，也给下一个接手的 AI agent。
-> 最后更新：2026-09-20（家里机）
+> 最后更新：2026-09-21（家里机）
 
 ## 一、项目目标
 
@@ -77,7 +77,33 @@ at_socket/  百问网参考库(不进编译)
 - [x] AT-8 module 层 esp8266.c（用户手写: esp8266_init(port)=at_init+探活重试+ATE0不判死+CWMODE; review 修正: i作用域/port注入/.h空参括号; **硬件验收通过**）
 - [x] AT-9 修复 core 解析器 strstr 残留 bug（agent 的 bug: line[]跨行复用但从不补'\0', 空行继承上一行"OK"字节→strstr误匹配→门铃提前响→resp只剩"\r\n"但返回0; 修复: '\n'分支开头 line[len]='\0'。C经典三连坑: 缓冲区复用+未终止字符串+strstr）
 
-## 五、当前任务（下一步，用户回家后从这里继续）
+## 五、当前任务（下一步，公司环境从这里继续）
+
+（旧的任务1~4已全部完成并记录在第四节；Keil 硬件验证清单也已落地：AT 组已建、uart2_driver 在 BSP 组、IncludePath 含 Third_Party/AT）
+
+### 当前作业：esp8266_connect_ap + esp8266_get_ip ——【用户自己写，agent review】
+
+esp8266.h 里已声明，填肉：
+
+```c
+int esp8266_connect_ap(const char *ssid, const char *password);
+int esp8266_get_ip(char *ip_buf, int buf_len);   /* 把CIFSR查到的IP字符串拷给调用方 */
+```
+
+写前 4 个思考题（写完要能回答）：
+1. CWJAP 的超时给多少？连路由 = 扫描→认证→DHCP，全流程可达十几秒，1000ms 会怎样？
+2. 密码错时模块回 `+CWJAP:<错误码>` + `FAIL` → core 返回 AT_RESP_ERROR，错误码在 resp_buf 里。connect_ap 要不要解析它区分"密码错/信号差"？用什么解析？
+   （resp_buf 是正确 NUL 终止的，可放心用字符串函数——与解析任务 line[] 的坑场景不同，想想为什么）
+3. 命令拼装 `AT+CWJAP="ssid","password"`：用 snprintf 还是 strcpy+strcat？ssid 带引号/逗号怎么办？边界怎么查？（AT_CMD_BUF_LEN=160）
+4. CIFSR 返回 `+CIFSR:STAIP,"192.168.1.15"`：怎么把引号里的 IP 抠给 ip_buf？（strstr 找 STAIP，再定位两个引号）
+
+### 之后的里程碑：TCP（AT-6）
+
+AT+CIPMUX=0 → AT+CIPSTART="TCP","host",port → AT+CIPSEND（'>' 提示符 core 已特判）→ **+IPD 分流**（解析任务里识别 `+IPD,<len>:` 数据不算命令应答——这是 core 层要加的新逻辑，届时 agent 实现，用户写 module 层的 net_send/net_recv）
+
+---
+
+### 以下为已完成的任务记录（供参考）
 
 ### 任务 1：port 层 ——【已完成 2026-09-20，见第四节】
 
@@ -117,7 +143,7 @@ at_socket/  百问网参考库(不进编译)
 
 ## 六、后续里程碑
 
-- **AT-5 WiFi**: esp8266.c(module 层, 引导用户写): `esp8266_init(const AT_PORT *port)`: at_init(port) → 探活 "AT" 重试10×500ms → ATE0 关回显(回显免疫后是卫生习惯非安全必需, resp更干净省流量) → AT+CWMODE=1 → AT+CWJAP(10s超时) → AT+CIFSR 查IP。**注意**: core 的 at_init 现在只建资源不做 I/O, 上电序列全归这里
+- **AT-5 WiFi（剩余部分）**: esp8266_connect_ap/get_ip（见第五节当前作业）；esp8266_init 已完成验收
 - **AT-6 TCP**: AT+CIPMUX=0 → AT+CIPSTART="TCP","host",port → AT+CIPSEND(注意'>'提示符特判) → +IPD 分流(解析任务里识别"+IPD,<len>:"不算命令应答)
 - **AT-7 Paho MQTT**: 移植 paho.mqtt.embedded-c 的 MQTTPacket, 桥接 transport_sendPacketBuffer/transport_getdata/Timer 四函数到 module 层 5 个 net_xxx
 - 老规矩：每个里程碑"用户写关键代码 + agent review"，硬件验收后 commit push
