@@ -334,9 +334,9 @@
             <v6Rtti>0</v6Rtti>
             <VariousControls>
               <MiscControls></MiscControls>
-              <Define>USE_HAL_DRIVER,STM32F407xx</Define>
+              <Define>USE_HAL_DRIVER,STM32F407xx,NOSTACKTRACE</Define>
               <Undefine></Undefine>
-              <IncludePath>../Core/Inc;../Drivers/STM32F4xx_HAL_Driver/Inc;../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy;../Middlewares/Third_Party/FreeRTOS/Source/include;../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2;../Middlewares/Third_Party/FreeRTOS/Source/portable/RVDS/ARM_CM4F;../Drivers/CMSIS/Device/ST/STM32F4xx/Include;../Drivers/CMSIS/Include;..\APP;..\BSP;..\Middlewares\Third_Party\AT</IncludePath>
+              <IncludePath>../Core/Inc;../Drivers/STM32F4xx_HAL_Driver/Inc;../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy;../Middlewares/Third_Party/FreeRTOS/Source/include;../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2;../Middlewares/Third_Party/FreeRTOS/Source/portable/RVDS/ARM_CM4F;../Drivers/CMSIS/Device/ST/STM32F4xx/Include;../Drivers/CMSIS/Include;..\APP;..\BSP;..\Middlewares\Third_Party\AT;..\Middlewares\Third_Party\PahoMQTT</IncludePath>
             </VariousControls>
           </Cads>
           <Aads>
@@ -595,6 +595,11 @@
               <FileType>1</FileType>
               <FilePath>..\APP\at_test_task.c</FilePath>
             </File>
+            <File>
+              <FileName>app_mqtt.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\APP\app_mqtt.c</FilePath>
+            </File>
           </Files>
         </Group>
         <Group>
@@ -634,6 +639,41 @@
               <FileName>esp8266.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\Middlewares\Third_Party\AT\esp8266.c</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
+          <GroupName>Middlewares/PahoMQTT</GroupName>
+          <Files>
+            <File>
+              <FileName>MQTTPacket.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Middlewares\Third_Party\PahoMQTT\MQTTPacket.c</FilePath>
+            </File>
+            <File>
+              <FileName>MQTTConnectClient.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Middlewares\Third_Party\PahoMQTT\MQTTConnectClient.c</FilePath>
+            </File>
+            <File>
+              <FileName>MQTTSerializePublish.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Middlewares\Third_Party\PahoMQTT\MQTTSerializePublish.c</FilePath>
+            </File>
+            <File>
+              <FileName>MQTTDeserializePublish.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Middlewares\Third_Party\PahoMQTT\MQTTDeserializePublish.c</FilePath>
+            </File>
+            <File>
+              <FileName>MQTTSubscribeClient.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Middlewares\Third_Party\PahoMQTT\MQTTSubscribeClient.c</FilePath>
+            </File>
+            <File>
+              <FileName>MQTTUnsubscribeClient.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Middlewares\Third_Party\PahoMQTT\MQTTUnsubscribeClient.c</FilePath>
             </File>
           </Files>
         </Group>

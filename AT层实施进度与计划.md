@@ -76,6 +76,13 @@ at_socket/  百问网参考库(不进编译)
 - [x] AT-7 core 加固·回显免疫（设计演进: 最初想把ATE0放module层 → 用户指出防线应归core → 加了at_set_echo → 用户再指出"core不认命令"铁律被违背 → **最终方案: 解析器回显免疫**(跳过与last_cmd相同的行, last_cmd由at_exec_cmd发送前记录) + 探活/ATE0 移交module层; at_set_echo已删, at_init只建资源不做I/O）
 - [x] AT-8 module 层 esp8266.c（用户手写: esp8266_init(port)=at_init+探活重试+ATE0不判死+CWMODE; review 修正: i作用域/port注入/.h空参括号; **硬件验收通过**）
 - [x] AT-9 修复 core 解析器 strstr 残留 bug（agent 的 bug: line[]跨行复用但从不补'\0', 空行继承上一行"OK"字节→strstr误匹配→门铃提前响→resp只剩"\r\n"但返回0; 修复: '\n'分支开头 line[len]='\0'。C经典三连坑: 缓冲区复用+未终止字符串+strstr）
+- [x] AT-11 core 网络收发两把刀（agent 写: at_send_raw 裸发/at_net_recv 收网络环/解析任务+IPD分流状态机/g_net_rb+g_net_sem+丢弃计数; 家里机已上板: tcp_connect baidu.com:80 90ms连通, WiFi验收 IP=192.168.2.115）
+- [x] AT-12 module 层 esp8266_send/recv + echo 联调（用户手写: CIPSEND→at_send_raw→等SEND OK 一条龙; recv=at_net_recv 透传; **硬件验收通过**: 板子与电脑 echo 服务器(8080端口)完成 TCP 双向对话 "hello net", +IPD 分流零污染, 令牌账本 2give/2take 平衡）
+  - 设计勘误记录: CIPSEND **没有 OK 行**(前置应答只有'>'), 用户抓出 agent 时序图编造的"OK字节流"事件; exec 返回的 AT_RESP_OK 是 '>' 分支设置的枚举值; 信息源优先级=硬件抓包>官方文档>参考代码注释>泛化知识>画的图
+- [x] AT-13 Paho MQTTPacket 库接入（agent 完成: clone eclipse/paho.mqtt.embedded-c → 挑客户端侧 11 文件入 Middlewares/Third_Party/PahoMQTT(+LICENSE/NOTICE) → Keil 新组+IncludePath+NOSTACKTRACE 宏; 该库只做报文打包/解包, 网络收发走调用方注入的 transport 函数指针）
+- [x] AT-14 app_mqtt.c 完成（agent 按"用户明确委托+明天研究"代写: transport 三函数(用户已写)+CONNECT/SUBSCRIBE/主循环(PUBLISH报到/收PUBLISH控LED/回PINGRESP)+broker序列; 全文标注四拍模式与学过的概念; **待上板+MQTTX 联调**; WiFi密码为真值, 提交前需占位符化）
+  - 接线关系: transport_getdata 经函数指针被 MQTTPacket_read 回调(同 AT_PORT 模式); sendPacketBuffer 由我们主动调(库只打包不发送)
+  - 结构调整: app_mqtt_task 成为网络唯一主人(init/connect_ap/get_ip/tcp_connect(broker.emqx.io)+MQTT), at_test_task 已退役
 - [x] AT-10 module 层 esp8266_connect_ap + esp8266_get_ip（用户手写, 公司环境 3 轮 review 通过: snprintf三态判定[n<0||n>=sizeof截断]/全路径return/字符vs字符串引号/**→&&/.h分号/strstr强转/const参数; **待硬件验证**(公司无机)）
   - 职责调整: CWMODE=1(2000ms) 从 init 挪进 connect_ap —— init 只管上电探活+ATE0, 谁连接谁负责自己的模式
   - get_ip 实际实现 `int esp8266_get_ip(PAT_Device pDev)`(内部 printf, 不拷给调用方), 用 AT+CIPSTA? 查 IP —— 与原作业签名(ip_buf,buf_len)不同但可用; 回家测试后若需要 IP 做他用再改造
@@ -83,7 +90,12 @@ at_socket/  百问网参考库(不进编译)
 
 ## 五、当前任务（下一步，家里环境从这里继续）
 
-（任务1~4 已完成；AT-10 的 connect_ap/get_ip 已写完过 review 但**未上板**——回家第一件事）
+（任务1~4 已完成；AT-10/AT-12 已上板验收；AT-13 Paho 库已接入——**当前作业见下**）
+
+### 当前作业：Paho MQTT 桥接 + app_mqtt 任务 ——【用户自己写，agent review】
+
+新建 `APP/app_mqtt.c/h`：3 个 transport 函数 + 1 个 MQTT 任务（broker = broker.emqx.io:1883 公共服务器）。
+transport 契约: sendPacketBuffer 需返回发送字节数; getdata 必须**循环读满 count 字节**（Paho 以 1 字节粒度读包头）; PINGREQ 必须回 PINGRESP 否则 keepalive 超时被踢。详见对话中的作业骨架。
 
 ### 回家第一棒：接线 + 硬件验证 WiFi 链路 ——【用户自己加, 3 行】
 

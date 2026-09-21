@@ -13,6 +13,7 @@
  *       命令序列全部归 module 层, core 靠"回显免疫"自保而非依赖 ATE0。
  */
 #include "at_device.h"
+#include "uart_ringbuf.h"   /* 复用环形缓冲做网络接收环(纯数据结构, 非硬件依赖) */
 #include "FreeRTOS.h"
 #include "task.h"
 #include "semphr.h"
@@ -21,6 +22,12 @@
 
 /* 单例: 本工程只有一个 WIFI 模块, 不做设备注册表 */
 static AT_Device g_at_dev;
+
+/* 网络接收侧(+IPD 分流的 payload 落地处)。
+ * core 私有: module 层只经 at_net_recv 取数, 不直接摸这两个对象 */
+static struct RingBuffer          g_net_rb;      /* 网络接收环(256B, MQTT 初期够用) */
+static SemaphoreHandle_t   g_net_sem;     /* "IPD 突发到了"的门铃 */
+static volatile uint32_t   g_net_drop_cnt;/* 接收环满被丢弃的字节数(调试用) */
 
 /* 攒行缓冲: AT 应答单行远达不到 128 */
 #define AT_LINE_BUF_LEN  128
@@ -57,12 +64,45 @@ static void at_parse_task(void *arg)
     uint8_t  byte;
     uint8_t  line[AT_LINE_BUF_LEN];
     uint32_t len = 0;
+    /* +IPD,<len>:<data> 分流状态机: 0=正常行模式 1=解析长度 2=消费数据 */
+    int ipd_state = 0;
+    int ipd_len = 0;
+    int ipd_cnt = 0;
 
     for (;;)
     {
         /* 阻塞收 1 字节; 200ms 没数据就转回去继续等, 攒了一半的行保留 */
         if (dev->port->recv_byte(&byte, 200) != 0)
             continue;
+
+        /* ---- +IPD 分流状态机: 必须在所有行逻辑之前 ----
+         * IPD 数据里可能有 \r\n 和 "OK" 等任意字节, 绝不能进攒行/应答判定 */
+        if (ipd_state == 1)          /* 攒 "+IPD,<len>:" 的长度段 */
+        {
+            if (byte == ':')
+            {
+                ipd_state = 2;
+                ipd_cnt = 0;
+            }
+            else if (byte >= '0' && byte <= '9')
+            {
+                ipd_len = ipd_len * 10 + (byte - '0');
+                if (ipd_len > 2048)  /* 异常长度: 放弃本包, 回行模式自愈 */
+                    ipd_state = 0;
+            }
+            continue;            /* 其他字符忽略 */
+        }
+        if (ipd_state == 2)      /* 消费 len 个网络数据字节 */
+        {
+            if (rb_write(&g_net_rb, byte) != 0)
+                g_net_drop_cnt++;/* 环满: 丢弃并计数, 保住解析主流程不死 */
+            if (++ipd_cnt >= ipd_len)
+            {
+                ipd_state = 0;
+                xSemaphoreGive(g_net_sem);   /* "IPD 突发到了" */
+            }
+            continue;
+        }
 
         /* '>' 提示符: AT+CIPSEND 后模块用它表示"可以发数据了"。
          * 它单独出现、没有换行, 必须在攒行逻辑之前处理 */
@@ -118,7 +158,18 @@ static void at_parse_task(void *arg)
 
         /* 普通字节: 攒进当前行(超长丢弃防越界, 正常 AT 应答达不到) */
         if (len < AT_LINE_BUF_LEN - 1)
+        {
             line[len++] = byte;
+
+            /* 行首出现 "+IPD," → 后面是 <len>:<data>, 切入分流状态机。
+             * len 归零: "+IPD," 前缀已被状态机接管, 不再属于任何应答行 */
+            if (len == 5 && memcmp(line, "+IPD,", 5) == 0)
+            {
+                ipd_state = 1;
+                ipd_len = 0;
+                len = 0;
+            }
+        }
     }
 }
 
@@ -194,6 +245,13 @@ int at_init(const AT_PORT *port)
     if (g_at_dev.at_lock == NULL || g_at_dev.at_sem == NULL)
         return -1;
 
+    /* 网络接收侧: 环形缓冲 + "有IPD突发"门铃 */
+    g_net_sem = xSemaphoreCreateBinary();
+    rb_init(&g_net_rb);
+    g_net_drop_cnt = 0;
+    if (g_net_sem == NULL)
+        return -1;
+
     g_at_dev.last_cmd_len = 0;
 
     /* port 的硬件初始化是可选的: 实现了就调, 没实现(NULL)就跳过 */
@@ -206,6 +264,48 @@ int at_init(const AT_PORT *port)
         return -1;
 
     return 0;
+}
+
+/*=====================================================================
+ * 裸发网络数据: CIPSEND 的 '>' 之后, 数据本体走这里。
+ * 只拿锁防串发, 不等应答 —— SEND OK 行由解析任务吞掉,
+ * 残留令牌由下次 exec_cmd 的清残留兜底(见 esp8266_send 的使用注释)。
+ *=====================================================================*/
+int at_send_raw(const uint8_t *data, uint16_t len)
+{
+    int ret;
+
+    xSemaphoreTake(g_at_dev.at_lock, portMAX_DELAY);
+    ret = g_at_dev.port->send(data, len);
+    xSemaphoreGive(g_at_dev.at_lock);
+    return ret;
+}
+
+/*=====================================================================
+ * 从网络接收环取数据: 读满 len 字节或超时, 返回实际字节数。
+ * 套路 = 先摸缓冲(唯一事实源), 摸空再按"剩余时间"等门铃,
+ * 醒来/超时后回到循环顶再摸 —— 与 uart2_receive_blocking 同款。
+ *=====================================================================*/
+int at_net_recv(uint8_t *buf, uint16_t len, uint32_t timeout_ms)
+{
+    TickType_t start = xTaskGetTickCount();
+    uint16_t   got   = 0;
+
+    while (got < len)
+    {
+        if (rb_read(&g_net_rb, &buf[got]) == 0)
+        {
+            got++;
+            continue;   /* 摸到了, 继续摸剩下的 */
+        }
+
+        TickType_t elapsed = xTaskGetTickCount() - start;
+        if (elapsed >= pdMS_TO_TICKS(timeout_ms))
+            break;      /* 总超时: 返回已读到的部分(可能为0) */
+
+        xSemaphoreTake(g_net_sem, pdMS_TO_TICKS(timeout_ms) - elapsed);
+    }
+    return (int)got;
 }
 
 /* 上层读完整应答内容用 */

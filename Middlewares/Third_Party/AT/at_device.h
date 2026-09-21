@@ -68,6 +68,21 @@ int at_init(const AT_PORT *port);
  */
 int at_exec_cmd(const char *cmd, uint32_t timeout_ms);
 
+/*
+ * 裸发网络数据(CIPSEND '>' 之后的数据本体): 拿锁发送, 不等应答。
+ * SEND OK 行由解析任务吞进 resp_buf, 下次 exec_cmd 的清残留兜底。
+ * 仅供 module 层在 at_exec_cmd("AT+CIPSEND=len") 成功之后调用。
+ * 成功返回 0, 失败返回 -1。
+ */
+int at_send_raw(const uint8_t *data, uint16_t len);
+
+/*
+ * 从网络接收缓冲取数据(+IPD 分流出来的 payload)。
+ * 读满 len 字节或超时为止, 返回实际读到的字节数(0 = 超时无数据)。
+ * 内部套路 = "先读缓冲, 读不到再按剩余时间等信号量" —— 与 uart2_receive_blocking 同款。
+ */
+int at_net_recv(uint8_t *buf, uint16_t len, uint32_t timeout_ms);
+
 /* 获取设备句柄(读 resp_buf / resp_status 用) */
 PAT_Device at_get_device(void);
 

@@ -46,7 +46,7 @@
 
 /* Private variables ---------------------------------------------------------*/
 /* USER CODE BEGIN Variables */
-QueueHandle_t  uart_frame_queue;   /* 存完整协议帧的队列(UART任务->业务任务) */
+//QueueHandle_t  uart_frame_queue;   /* 存完整协议帧的队列(UART任务->业务任务) */
 /* USER CODE END Variables */
 /* Definitions for defaultTask */
 osThreadId_t defaultTaskHandle;
@@ -108,7 +108,14 @@ void MX_FREERTOS_Init(void) {
   }
   */
 
+  /*
   if(xTaskCreate(at_test_task, "at_test_task", 256, NULL, osPriorityAboveNormal, NULL) != pdPASS)
+  {
+      Error_Handler();
+  }
+  */
+
+  if(xTaskCreate(app_mqtt_task, "app_mqtt_task", 512, NULL, osPriorityAboveNormal, NULL) != pdPASS)
   {
       Error_Handler();
   }
