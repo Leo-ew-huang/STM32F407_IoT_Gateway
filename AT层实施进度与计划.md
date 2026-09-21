@@ -1,7 +1,7 @@
 # AT 层实施进度与计划（跨环境 Handoff 文档）
 
 > 本文档供两台工作环境（公司/家）之间同步进度使用，也给下一个接手的 AI agent。
-> 最后更新：2026-09-21（家里机）
+> 最后更新：2026-09-21（公司机·晚间）
 
 ## 一、项目目标
 
@@ -76,30 +76,51 @@ at_socket/  百问网参考库(不进编译)
 - [x] AT-7 core 加固·回显免疫（设计演进: 最初想把ATE0放module层 → 用户指出防线应归core → 加了at_set_echo → 用户再指出"core不认命令"铁律被违背 → **最终方案: 解析器回显免疫**(跳过与last_cmd相同的行, last_cmd由at_exec_cmd发送前记录) + 探活/ATE0 移交module层; at_set_echo已删, at_init只建资源不做I/O）
 - [x] AT-8 module 层 esp8266.c（用户手写: esp8266_init(port)=at_init+探活重试+ATE0不判死+CWMODE; review 修正: i作用域/port注入/.h空参括号; **硬件验收通过**）
 - [x] AT-9 修复 core 解析器 strstr 残留 bug（agent 的 bug: line[]跨行复用但从不补'\0', 空行继承上一行"OK"字节→strstr误匹配→门铃提前响→resp只剩"\r\n"但返回0; 修复: '\n'分支开头 line[len]='\0'。C经典三连坑: 缓冲区复用+未终止字符串+strstr）
+- [x] AT-10 module 层 esp8266_connect_ap + esp8266_get_ip（用户手写, 公司环境 3 轮 review 通过: snprintf三态判定[n<0||n>=sizeof截断]/全路径return/字符vs字符串引号/**→&&/.h分号/strstr强转/const参数; **待硬件验证**(公司无机)）
+  - 职责调整: CWMODE=1(2000ms) 从 init 挪进 connect_ap —— init 只管上电探活+ATE0, 谁连接谁负责自己的模式
+  - get_ip 实际实现 `int esp8266_get_ip(PAT_Device pDev)`(内部 printf, 不拷给调用方), 用 AT+CIPSTA? 查 IP —— 与原作业签名(ip_buf,buf_len)不同但可用; 回家测试后若需要 IP 做他用再改造
+  - 已知小尾巴: esp8266.c connect_ap 里 printf("%s", pDev->resp_buf) 需加 (char*) 强转, Keil 会有 signedness 警告
 
-## 五、当前任务（下一步，公司环境从这里继续）
+## 五、当前任务（下一步，家里环境从这里继续）
 
-（旧的任务1~4已全部完成并记录在第四节；Keil 硬件验证清单也已落地：AT 组已建、uart2_driver 在 BSP 组、IncludePath 含 Third_Party/AT）
+（任务1~4 已完成；AT-10 的 connect_ap/get_ip 已写完过 review 但**未上板**——回家第一件事）
 
-### 当前作业：esp8266_connect_ap + esp8266_get_ip ——【用户自己写，agent review】
+### 回家第一棒：接线 + 硬件验证 WiFi 链路 ——【用户自己加, 3 行】
 
-esp8266.h 里已声明，填肉：
+`APP/at_test_task.c` 在 `esp8266_init OK` 之后：
 
-```c
-int esp8266_connect_ap(const char *ssid, const char *password);
-int esp8266_get_ip(char *ip_buf, int buf_len);   /* 把CIFSR查到的IP字符串拷给调用方 */
+1. `esp8266_connect_ap("你家WiFi名", "密码")` —— 失败打印并停住
+2. `esp8266_get_ip(at_get_device())` —— 打印拿到的 IP
+3. 原来的 AT 循环保留
+
+预期串口输出:
 ```
+esp8266_init OK
+<WIFI CONNECTED / WIFI GOT IP / OK 原文>   ← connect_ap 里的 printf 打的
+connected ip is : 192.168.x.x
+AT -> 0, resp=[...]
+```
+翻车排查: CWJAP 回 ERROR 时看 resp_buf 里的 `+CWJAP:1`(超时)/`+CWJAP:2`(**密码错**)；`AT+CIPSTA?` 必须在拿到 IP 之后查才有内容。
 
-写前 4 个思考题（写完要能回答）：
-1. CWJAP 的超时给多少？连路由 = 扫描→认证→DHCP，全流程可达十几秒，1000ms 会怎样？
-2. 密码错时模块回 `+CWJAP:<错误码>` + `FAIL` → core 返回 AT_RESP_ERROR，错误码在 resp_buf 里。connect_ap 要不要解析它区分"密码错/信号差"？用什么解析？
-   （resp_buf 是正确 NUL 终止的，可放心用字符串函数——与解析任务 line[] 的坑场景不同，想想为什么）
-3. 命令拼装 `AT+CWJAP="ssid","password"`：用 snprintf 还是 strcpy+strcat？ssid 带引号/逗号怎么办？边界怎么查？（AT_CMD_BUF_LEN=160）
-4. CIFSR 返回 `+CIFSR:STAIP,"192.168.1.15"`：怎么把引号里的 IP 抠给 ip_buf？（strstr 找 STAIP，再定位两个引号）
+### 回家第二棒：esp8266_tcp_connect ——【用户自己写, agent review】
 
-### 之后的里程碑：TCP（AT-6）
+签名参考: `int esp8266_tcp_connect(const char *host, uint16_t port);`
 
-AT+CIPMUX=0 → AT+CIPSTART="TCP","host",port → AT+CIPSEND（'>' 提示符 core 已特判）→ **+IPD 分流**（解析任务里识别 `+IPD,<len>:` 数据不算命令应答——这是 core 层要加的新逻辑，届时 agent 实现，用户写 module 层的 net_send/net_recv）
+背景知识（已讲透的概念）:
+- `AT+CIPSTART="TCP","192.168.1.100",8080` 一条命令即建立 TCP（host 填点分 IP 或域名都行），应答 `CONNECT`+`OK`，失败 `DNS Fail/connection refuse`+`ERROR`(进 resp_buf)
+- BSD 的 `socket()` 本质是向内核"申请记账句柄"(句柄贯穿 bind/listen/connect/close 全生命周期, 服务器角色根本不 connect 所以创建和连接必须分开)；参考库的 esp8266_socket() 只在 MCU 内存开槽(一条AT命令都不发)；CIPMUX=1 时 CIPSTART 带 link id = 模块侧的"fd"
+- 我们敢压缩成一条 esp8266_tcp_connect 的依据: Paho MQTT 客户端一辈子只有一条 TCP, CIPMUX=0 单连接模式下模块替你管槽位, 句柄记账多余
+
+写前 3 个思考题（写完要能回答）:
+1. 前置的 `AT+CIPMUX=0` 放哪？init、还是 tcp_connect 开头？—— 想幂等性和"谁负责自己的前置条件"
+2. 端口参数为什么用 uint16_t（0~65535）？snprintf 拼接时用 %u 还是直接传？
+3. 超时给多少？TCP 连远程服务器比连局域网路由慢在哪（握手 RTT / DNS 解析）？
+
+复用刚毕业的套路: snprintf 三态判定、\" 转义、全路径 return、(char*) 打印 resp_buf
+
+### 之后的里程碑：TCP 收发（AT-6 后半）
+
+① tcp_connect(本棒) → ② esp8266_send(data,len): AT+CIPSEND=len → '>'(core已特判,at_exec_cmd会返回OK) → 裸发数据(需 core 层加 at_send_raw: 拿锁裸发不等应答; SEND OK 行会被解析任务吃进 resp_buf, 下次 exec_cmd 复位 resp_len 兜底) → ③ esp8266_recv: **+IPD 分流**(解析任务识别 `+IPD,<len>:` 不算命令应答, payload 分流到接收缓冲/队列——core 层要加的新逻辑, 届时 agent 实现, 用户写 module 层) → ④ Paho transport 桥接 4 函数
 
 ---
 
@@ -143,8 +164,8 @@ AT+CIPMUX=0 → AT+CIPSTART="TCP","host",port → AT+CIPSEND（'>' 提示符 cor
 
 ## 六、后续里程碑
 
-- **AT-5 WiFi（剩余部分）**: esp8266_connect_ap/get_ip（见第五节当前作业）；esp8266_init 已完成验收
-- **AT-6 TCP**: AT+CIPMUX=0 → AT+CIPSTART="TCP","host",port → AT+CIPSEND(注意'>'提示符特判) → +IPD 分流(解析任务里识别"+IPD,<len>:"不算命令应答)
+- **AT-5 WiFi（代码完, 待硬件验证）**: esp8266_connect_ap/get_ip 已过 review（见第五节回家第一棒）；esp8266_init 已验收
+- **AT-6 TCP**: esp8266_tcp_connect（见第五节回家第二棒）→ esp8266_send('>' 流程 + core 加 at_send_raw) → esp8266_recv(+IPD 分流, core 层新逻辑)
 - **AT-7 Paho MQTT**: 移植 paho.mqtt.embedded-c 的 MQTTPacket, 桥接 transport_sendPacketBuffer/transport_getdata/Timer 四函数到 module 层 5 个 net_xxx
 - 老规矩：每个里程碑"用户写关键代码 + agent review"，硬件验收后 commit push
 
