@@ -1,7 +1,7 @@
 # AT 层实施进度与计划（跨环境 Handoff 文档）
 
 > 本文档供两台工作环境（公司/家）之间同步进度使用，也给下一个接手的 AI agent。
-> 最后更新：2026-09-21（公司机·晚间）
+> 最后更新：2026-09-22（家里机）——代码全部完成，唯一待办=回家上板 MQTT 联调
 
 ## 一、项目目标
 
@@ -88,51 +88,37 @@ at_socket/  百问网参考库(不进编译)
   - get_ip 实际实现 `int esp8266_get_ip(PAT_Device pDev)`(内部 printf, 不拷给调用方), 用 AT+CIPSTA? 查 IP —— 与原作业签名(ip_buf,buf_len)不同但可用; 回家测试后若需要 IP 做他用再改造
   - 已知小尾巴: esp8266.c connect_ap 里 printf("%s", pDev->resp_buf) 需加 (char*) 强转, Keil 会有 signedness 警告
 
-## 五、当前任务（下一步，家里环境从这里继续）
+## 五、当前任务（下一步，公司环境从这里继续）
 
-（任务1~4 已完成；AT-10/AT-12 已上板验收；AT-13 Paho 库已接入——**当前作业见下**）
+（**代码全部完成并编译通过**：AT-13 Paho 库 + AT-14 app_mqtt.c；唯一待办 = **上板联调**——硬件在家，公司环境先做"研究清单"）
 
-### 当前作业：Paho MQTT 桥接 + app_mqtt 任务 ——【用户自己写，agent review】
+### 公司环境：研究清单（对照 APP/app_mqtt.c 读，每条要能向别人复述）
+1. transport 契约：getdata 为什么必须循环读满 count（Paho 以 1 字节粒度读包头）；sendPacketBuffer 为什么返回字节数
+2. 两个方向的关联：发送 = 库只打包、我们主动调 sendPacketBuffer；接收 = MQTTPacket_read 经函数指针回调 getdata（同 AT_PORT 模式）
+3. 四拍模式：Serialize 打包 → 发出 → MQTTPacket_read 等类型 → Deserialize 解包，CONNECT/SUBSCRIBE/PUBLISH 三处对照
+4. CIPSEND 没有 OK 行：'>' 是唯一前置应答，exec 返回的 AT_RESP_OK 是 '>' 分支设置的枚举值（勘误记录见第四节 AT-12）
+5. keepalive 契约：PINGREQ 必须回 PINGRESP 否则 90 秒被踢；clientID 必须全网唯一
 
-新建 `APP/app_mqtt.c/h`：3 个 transport 函数 + 1 个 MQTT 任务（broker = broker.emqx.io:1883 公共服务器）。
-transport 契约: sendPacketBuffer 需返回发送字节数; getdata 必须**循环读满 count 字节**（Paho 以 1 字节粒度读包头）; PINGREQ 必须回 PINGRESP 否则 keepalive 超时被踢。详见对话中的作业骨架。
+### 回家后：上板联调（唯一待办，约10分钟）
 
-### 回家第一棒：接线 + 硬件验证 WiFi 链路 ——【用户自己加, 3 行】
-
-`APP/at_test_task.c` 在 `esp8266_init OK` 之后：
-
-1. `esp8266_connect_ap("你家WiFi名", "密码")` —— 失败打印并停住
-2. `esp8266_get_ip(at_get_device())` —— 打印拿到的 IP
-3. 原来的 AT 循环保留
+1. `APP/app_mqtt.c` 把 `your-ssid`/`your-password` 换回真实 WiFi（**勿提交真值**）
+2. Keil 重开（uvprojx 被改过：加了 Paho 组/NOSTACKTRACE/app_mqtt.c）→ F7 → 烧录
+3. MQTTX 连 `broker.emqx.io:1883`：
+   - 订阅 `f407/board/hello` → 每 5 秒看到 `hello N`
+   - 发布到 `f407/led/control` → 内容 `on`/`off` → 板子串口打印 `>> LED ON/OFF`
 
 预期串口输出:
 ```
-esp8266_init OK
-<WIFI CONNECTED / WIFI GOT IP / OK 原文>   ← connect_ap 里的 printf 打的
-connected ip is : 192.168.x.x
-AT -> 0, resp=[...]
+esp8266_init OK → IP → TCP connected → MQTT connected
+suback: granted_qos=0 (OK)
+publish: hello 0 / rx: on / >> LED ON  ...
 ```
-翻车排查: CWJAP 回 ERROR 时看 resp_buf 里的 `+CWJAP:1`(超时)/`+CWJAP:2`(**密码错**)；`AT+CIPSTA?` 必须在拿到 IP 之后查才有内容。
+翻车排查: `broker rejected rc=2`=clientID冲突(改ID); `expect CONNACK fail`=TCP通但MQTT握手没完成(看broker地址端口); 卡在 `publish` 后无后续=getdata 3s 超时属正常(无报文); 长时间无 publish = 可能被 keepalive 踢(检查 PINGRESP 分支)。
 
-### 回家第二棒：esp8266_tcp_connect ——【用户自己写, agent review】
-
-签名参考: `int esp8266_tcp_connect(const char *host, uint16_t port);`
-
-背景知识（已讲透的概念）:
-- `AT+CIPSTART="TCP","192.168.1.100",8080` 一条命令即建立 TCP（host 填点分 IP 或域名都行），应答 `CONNECT`+`OK`，失败 `DNS Fail/connection refuse`+`ERROR`(进 resp_buf)
-- BSD 的 `socket()` 本质是向内核"申请记账句柄"(句柄贯穿 bind/listen/connect/close 全生命周期, 服务器角色根本不 connect 所以创建和连接必须分开)；参考库的 esp8266_socket() 只在 MCU 内存开槽(一条AT命令都不发)；CIPMUX=1 时 CIPSTART 带 link id = 模块侧的"fd"
-- 我们敢压缩成一条 esp8266_tcp_connect 的依据: Paho MQTT 客户端一辈子只有一条 TCP, CIPMUX=0 单连接模式下模块替你管槽位, 句柄记账多余
-
-写前 3 个思考题（写完要能回答）:
-1. 前置的 `AT+CIPMUX=0` 放哪？init、还是 tcp_connect 开头？—— 想幂等性和"谁负责自己的前置条件"
-2. 端口参数为什么用 uint16_t（0~65535）？snprintf 拼接时用 %u 还是直接传？
-3. 超时给多少？TCP 连远程服务器比连局域网路由慢在哪（握手 RTT / DNS 解析）？
-
-复用刚毕业的套路: snprintf 三态判定、\" 转义、全路径 return、(char*) 打印 resp_buf
-
-### 之后的里程碑：TCP 收发（AT-6 后半）
-
-① tcp_connect(本棒) → ② esp8266_send(data,len): AT+CIPSEND=len → '>'(core已特判,at_exec_cmd会返回OK) → 裸发数据(需 core 层加 at_send_raw: 拿锁裸发不等应答; SEND OK 行会被解析任务吃进 resp_buf, 下次 exec_cmd 复位 resp_len 兜底) → ③ esp8266_recv: **+IPD 分流**(解析任务识别 `+IPD,<len>:` 不算命令应答, payload 分流到接收缓冲/队列——core 层要加的新逻辑, 届时 agent 实现, 用户写 module 层) → ④ Paho transport 桥接 4 函数
+### 联调通过后可扩展（不急，做完可收官）
+- LED 真正接 GPIO（当前 printf 占位）
+- QoS1 + PUBACK / 断线重连（识别 ALREADY CONNECT）/ at_net_recv 环扩容
+- 工程复盘：把 Handoff 文档收个尾，整理"从点灯到上云"的架构讲解稿
 
 ---
 
