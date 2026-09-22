@@ -26,6 +26,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "at_test_task.h"
+#include "app_mqtt.h"
 #include "queue.h"
 /* USER CODE END Includes */
 

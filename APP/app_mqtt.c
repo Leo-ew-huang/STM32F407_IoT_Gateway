@@ -87,7 +87,7 @@ void app_mqtt_task(void *argument)
     }
     printf("esp8266_init OK\r\n");
 
-    if (esp8266_connect_ap("your-ssid", "your-password") != 0) {  /* 本地运行: 换成你的WiFi信息(勿提交真值) */
+    if (esp8266_connect_ap("Cyc", "Cyc520Hew") != 0) {  /* 本地运行: 换成你的WiFi信息(勿提交真值) */
         printf("connect ap fail\r\n");
         vTaskDelete(NULL);
     }
@@ -140,6 +140,7 @@ void app_mqtt_task(void *argument)
     {
         MQTTString topic = MQTTString_initializer;
         int msgid = 1, req_qos = 0, subscount = 0, granted_qos = -1;
+        unsigned short packetid = (unsigned short)msgid;  /* suback解包: 参数类型是 unsigned short* */
 
         topic.cstring = TOPIC_SUB;
         len = MQTTSerialize_subscribe(buf, sizeof(buf), 0, msgid, 1,
@@ -150,7 +151,7 @@ void app_mqtt_task(void *argument)
             printf("expect SUBACK fail\r\n");
             vTaskDelete(NULL);
         }
-        MQTTDeserialize_suback(&subscount, msgid, 1, &granted_qos,    /* ④ 解包 */
+        MQTTDeserialize_suback(&packetid, 1, &subscount, &granted_qos, /* ④ 解包: 包id/数量/授予QoS */
                                buf, sizeof(buf));
         printf("suback: granted_qos=%d (%s)\r\n", granted_qos,
                granted_qos == 0 ? "OK" : "拒绝/0x80");
@@ -181,10 +182,12 @@ void app_mqtt_task(void *argument)
 
             if (type == PUBLISH)
             {
-                int dup, qos, retained, msgid, payloadlen;
+                unsigned char dup, retained;          /* 真实原型: 这两个是 unsigned char* */
+                unsigned short packetid;              /* 真实原型: unsigned short* */
+                int qos, payloadlen;
                 MQTTString topicName;
                 unsigned char *payload_in;
-                MQTTDeserialize_publish(&dup, &qos, &retained, &msgid,
+                MQTTDeserialize_publish(&dup, &qos, &retained, &packetid,
                                         &topicName, &payload_in, &payloadlen,
                                         buf, sizeof(buf));
                 printf("rx: %.*s\r\n", payloadlen, (const char *)payload_in);
