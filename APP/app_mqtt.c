@@ -17,6 +17,8 @@
 #include "FreeRTOS.h"
 #include "task.h"
 #include "semphr.h"
+#include "bsp_led.h"
+#include "bsp_buzzer.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -87,7 +89,7 @@ void app_mqtt_task(void *argument)
     }
     printf("esp8266_init OK\r\n");
 
-    if (esp8266_connect_ap("Cyc", "Cyc520Hew") != 0) {  /* 本地运行: 换成你的WiFi信息(勿提交真值) */
+    if (esp8266_connect_ap("your-ssid", "your-password") != 0) {  /* 本地运行: 换成你的WiFi信息(勿提交真值) */
         printf("connect ap fail\r\n");
         vTaskDelete(NULL);
     }
@@ -195,9 +197,25 @@ void app_mqtt_task(void *argument)
                 /* TODO(以后): 接 LED GPIO, 收 "on"/"off" 点灯。
                  * 当前工程未配置 LED 引脚, 先用 printf 表达意图 */
                 if (payloadlen == 2 && memcmp(payload_in, "on", 2) == 0)
+                {
+                    led_on();
                     printf(">> LED ON  (TODO: GPIO)\r\n");
+                }
                 else if (payloadlen == 3 && memcmp(payload_in, "off", 3) == 0)
+                {
+                    led_off();
                     printf(">> LED OFF (TODO: GPIO)\r\n");
+                }
+                else if (payloadlen == 9 && memcmp(payload_in, "buzzer on", 9) == 0)
+                {
+                    buzzer_on();
+                    printf(">> Buzzer ON (TODO: GPIO)\r\n");
+                }
+                else if (payloadlen == 10 && memcmp(payload_in, "buzzer off", 10) == 0)
+                {
+                    buzzer_off();
+                    printf(">> Buzzer OFF (TODO: GPIO)\r\n");
+                }    
             }
             /* type<=0: 本轮 3s 无报文 → 忽略。
              * 保活说明: 当前每5s的PUBLISH本身就是报文, broker收到任何报文都会

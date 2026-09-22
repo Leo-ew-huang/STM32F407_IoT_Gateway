@@ -1,7 +1,7 @@
 # AT 层实施进度与计划（跨环境 Handoff 文档）
 
 > 本文档供两台工作环境（公司/家）之间同步进度使用，也给下一个接手的 AI agent。
-> 最后更新：2026-09-22（家里机）——**项目通关：AT-15 上板联调通过**
+> 最后更新：2026-09-22（家里机·晚间）—— AT-16 下行控灯闭环达成；遗留作业=命令表驱动重构；公司环境明天接线
 
 ## 一、项目目标
 
@@ -79,6 +79,10 @@ at_socket/  百问网参考库(不进编译)
 - [x] AT-11 core 网络收发两把刀（agent 写: at_send_raw 裸发/at_net_recv 收网络环/解析任务+IPD分流状态机/g_net_rb+g_net_sem+丢弃计数; 家里机已上板: tcp_connect baidu.com:80 90ms连通, WiFi验收 IP=192.168.2.115）
 - [x] AT-12 module 层 esp8266_send/recv + echo 联调（用户手写: CIPSEND→at_send_raw→等SEND OK 一条龙; recv=at_net_recv 透传; **硬件验收通过**: 板子与电脑 echo 服务器(8080端口)完成 TCP 双向对话 "hello net", +IPD 分流零污染, 令牌账本 2give/2take 平衡）
   - 设计勘误记录: CIPSEND **没有 OK 行**(前置应答只有'>'), 用户抓出 agent 时序图编造的"OK字节流"事件; exec 返回的 AT_RESP_OK 是 '>' 分支设置的枚举值; 信息源优先级=硬件抓包>官方文档>参考代码注释>泛化知识>画的图
+- [x] AT-16 **"最后一厘米"下行闭环 + MQTTX 生态验证**（家里机: 用户手写 bsp_led/bsp_buzzer(极性封装在BSP, 查图三问: LED=PF9/PF10低电平亮/蜂鸣器PA7) + 命令格式升级"led on"/"buzzer on"(设备 动作); 硬件验收: MQTTX 下行控灯成功, hello 70+连发零掉线; 彩蛋: MQTTX 输入框误带回车→payload 多了 \r\n → 加仪表 print len 实锤——报文内容永远以字节为准）
+  - MQTT 生态拓展(无板端改动): 手机 IoT MQTT Panel 订阅+开关控件 / Python paho-mqtt 消费脚本 / mosquitto_pub——broker 眼里人人平等, 设备端已就位, 观众席随意加
+  - 顺带结论: 板子因杜邦线接 ESP8266 无法插回底板 → 底板蜂鸣器暂不可达, 用户明天在公司环境重新引线; BSP 接缝已就位(bsp_buzzer 换引脚只动一行)
+  - 当前遗留作业: **命令表驱动重构**(else-if 链 → dev_cmd_t 查表分发, 切词+查表+handler; payload_in 非 NUL 结尾的坑已提示), 用户未交
 - [x] AT-13 Paho MQTTPacket 库接入（agent 完成: clone eclipse/paho.mqtt.embedded-c → 挑客户端侧 11 文件入 Middlewares/Third_Party/PahoMQTT(+LICENSE/NOTICE) → Keil 新组+IncludePath+NOSTACKTRACE 宏; 该库只做报文打包/解包, 网络收发走调用方注入的 transport 函数指针）
 - [x] AT-14 app_mqtt.c 完成（agent 按"用户明确委托+明天研究"代写: transport 三函数(用户已写)+CONNECT/SUBSCRIBE/主循环+broker序列, 全文标注四拍模式与学过的概念; WiFi凭证占位符化; AC5 揭出反序列化调用类型错误已按真实原型修复——VSCode IntelliSense 不报≠正确, Keil 全量编译才是裁决）
 - [x] AT-15 **上板联调通过，项目通关**（2026-09-22 家里机: WiFi→IP→TCP→MQTT connected→suback qos0→hello N 连续30+条稳定上报→MQTTX 下行 rx:"on" 收到。彩蛋: MQTTX 输入带引号导致 LED 分支未触发——报文内容是字节, 解析前先看原样字节）
@@ -89,38 +93,24 @@ at_socket/  百问网参考库(不进编译)
   - get_ip 实际实现 `int esp8266_get_ip(PAT_Device pDev)`(内部 printf, 不拷给调用方), 用 AT+CIPSTA? 查 IP —— 与原作业签名(ip_buf,buf_len)不同但可用; 回家测试后若需要 IP 做他用再改造
   - 已知小尾巴: esp8266.c connect_ap 里 printf("%s", pDev->resp_buf) 需加 (char*) 强转, Keil 会有 signedness 警告
 
-## 五、当前任务（下一步，公司环境从这里继续）
+## 五、当前任务（下一步）
 
-（**代码全部完成并编译通过**：AT-13 Paho 库 + AT-14 app_mqtt.c；唯一待办 = **上板联调**——硬件在家，公司环境先做"研究清单"）
+（AT-16 已完成：MQTT 下行控灯闭环 + MQTT 生态验证，见第四节。当前优先级：**表驱动重构作业 → 公司接线 → 下一模块**）
 
-### 公司环境：研究清单（对照 APP/app_mqtt.c 读，每条要能向别人复述）
-1. transport 契约：getdata 为什么必须循环读满 count（Paho 以 1 字节粒度读包头）；sendPacketBuffer 为什么返回字节数
-2. 两个方向的关联：发送 = 库只打包、我们主动调 sendPacketBuffer；接收 = MQTTPacket_read 经函数指针回调 getdata（同 AT_PORT 模式）
-3. 四拍模式：Serialize 打包 → 发出 → MQTTPacket_read 等类型 → Deserialize 解包，CONNECT/SUBSCRIBE/PUBLISH 三处对照
-4. CIPSEND 没有 OK 行：'>' 是唯一前置应答，exec 返回的 AT_RESP_OK 是 '>' 分支设置的枚举值（勘误记录见第四节 AT-12）
-5. keepalive 契约：PINGREQ 必须回 PINGRESP 否则 90 秒被踢；clientID 必须全网唯一
+### 公司环境：接线
+明天把核心板插回底板/重新引线接好 ESP8266（底板蜂鸣器随之恢复可达，bsp_buzzer 换引脚只动一行）。
 
-### 回家后：上板联调（唯一待办，约10分钟）
+### 遗留作业（优先级最高）：命令表驱动重构
+else-if 链 → `dev_cmd_t` 查表分发：payload 按空格切词（dev + arg）→ 遍历 g_cmd_table → handler 执行。
+验收：MQTTX 发 `led on` / `buzzer off`；此后新设备 = 表加一行 + 一个 handler，主循环永不再改。
+注意：`payload_in` 非 NUL 结尾，处理前先按长度拷到局部数组（ strstr 坑的近亲）。
 
-1. `APP/app_mqtt.c` 把 `your-ssid`/`your-password` 换回真实 WiFi（**勿提交真值**）
-2. Keil 重开（uvprojx 被改过：加了 Paho 组/NOSTACKTRACE/app_mqtt.c）→ F7 → 烧录
-3. MQTTX 连 `broker.emqx.io:1883`：
-   - 订阅 `f407/board/hello` → 每 5 秒看到 `hello N`
-   - 发布到 `f407/led/control` → 内容 `on`/`off` → 板子串口打印 `>> LED ON/OFF`
-
-预期串口输出:
-```
-esp8266_init OK → IP → TCP connected → MQTT connected
-suback: granted_qos=0 (OK)
-publish: hello 0 / rx: on / >> LED ON  ...
-```
-翻车排查: `broker rejected rc=2`=clientID**格式非法**被拒(检查长度/字符, 不是撞号); 撞ID(与MQTTX或其他设备同名)的现象是**顶号**——CONNACK成功后互相踢线、反复重连, 改ID解决; `expect CONNACK fail`=TCP通但MQTT握手没完成(看broker地址端口); 卡在 `publish` 后无后续=getdata 3s 超时属正常(无报文)。
-
-### 联调通过后可扩展（不急，做完可收官）
-- LED 真正接 GPIO（当前 printf 占位）
-- **低频上报时的主动保活**: 上报间隔接近 keepalive 时, 加"主动发PINGREQ→下轮read收PINGRESP"逻辑(规范MQTT-3.12.0-1: PINGREQ只能客户端→broker; broker收到任何报文都重置计时器)
-- QoS1 + PUBACK / 断线重连（识别 ALREADY CONNECT）/ at_net_recv 环扩容
-- 工程复盘：把 Handoff 文档收个尾，整理"从点灯到上云"的架构讲解稿
+### 下一模块候选（表驱动完成后按兴趣选）
+- **DHT11 温湿度上云**（单总线时序）→ Python paho-mqtt 订阅消费 → InfluxDB+Grafana 曲线面板
+- OLED 状态面板（I2C：显示 IP/MQTT状态/温湿度）
+- 红外遥控（定时器输入捕获 + NEC 解码，遥控器控灯）
+- 断网缓存（SPI Flash：离线存数据联网补传——工业场景）
+- **低频上报时的主动保活**（上报间隔接近 keepalive 时才需要；当前 5s 上报天然保活）
 
 ---
 
