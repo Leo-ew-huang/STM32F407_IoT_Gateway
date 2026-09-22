@@ -1,7 +1,7 @@
 # AT 层实施进度与计划（跨环境 Handoff 文档）
 
 > 本文档供两台工作环境（公司/家）之间同步进度使用，也给下一个接手的 AI agent。
-> 最后更新：2026-09-22（家里机）——代码全部完成，唯一待办=回家上板 MQTT 联调
+> 最后更新：2026-09-22（家里机）——**项目通关：AT-15 上板联调通过**
 
 ## 一、项目目标
 
@@ -80,7 +80,8 @@ at_socket/  百问网参考库(不进编译)
 - [x] AT-12 module 层 esp8266_send/recv + echo 联调（用户手写: CIPSEND→at_send_raw→等SEND OK 一条龙; recv=at_net_recv 透传; **硬件验收通过**: 板子与电脑 echo 服务器(8080端口)完成 TCP 双向对话 "hello net", +IPD 分流零污染, 令牌账本 2give/2take 平衡）
   - 设计勘误记录: CIPSEND **没有 OK 行**(前置应答只有'>'), 用户抓出 agent 时序图编造的"OK字节流"事件; exec 返回的 AT_RESP_OK 是 '>' 分支设置的枚举值; 信息源优先级=硬件抓包>官方文档>参考代码注释>泛化知识>画的图
 - [x] AT-13 Paho MQTTPacket 库接入（agent 完成: clone eclipse/paho.mqtt.embedded-c → 挑客户端侧 11 文件入 Middlewares/Third_Party/PahoMQTT(+LICENSE/NOTICE) → Keil 新组+IncludePath+NOSTACKTRACE 宏; 该库只做报文打包/解包, 网络收发走调用方注入的 transport 函数指针）
-- [x] AT-14 app_mqtt.c 完成（agent 按"用户明确委托+明天研究"代写: transport 三函数(用户已写)+CONNECT/SUBSCRIBE/主循环(PUBLISH报到/收PUBLISH控LED/回PINGRESP)+broker序列; 全文标注四拍模式与学过的概念; **待上板+MQTTX 联调**; WiFi密码为真值, 提交前需占位符化）
+- [x] AT-14 app_mqtt.c 完成（agent 按"用户明确委托+明天研究"代写: transport 三函数(用户已写)+CONNECT/SUBSCRIBE/主循环+broker序列, 全文标注四拍模式与学过的概念; WiFi凭证占位符化; AC5 揭出反序列化调用类型错误已按真实原型修复——VSCode IntelliSense 不报≠正确, Keil 全量编译才是裁决）
+- [x] AT-15 **上板联调通过，项目通关**（2026-09-22 家里机: WiFi→IP→TCP→MQTT connected→suback qos0→hello N 连续30+条稳定上报→MQTTX 下行 rx:"on" 收到。彩蛋: MQTTX 输入带引号导致 LED 分支未触发——报文内容是字节, 解析前先看原样字节）
   - 接线关系: transport_getdata 经函数指针被 MQTTPacket_read 回调(同 AT_PORT 模式); sendPacketBuffer 由我们主动调(库只打包不发送)
   - 结构调整: app_mqtt_task 成为网络唯一主人(init/connect_ap/get_ip/tcp_connect(broker.emqx.io)+MQTT), at_test_task 已退役
 - [x] AT-10 module 层 esp8266_connect_ap + esp8266_get_ip（用户手写, 公司环境 3 轮 review 通过: snprintf三态判定[n<0||n>=sizeof截断]/全路径return/字符vs字符串引号/**→&&/.h分号/strstr强转/const参数; **待硬件验证**(公司无机)）

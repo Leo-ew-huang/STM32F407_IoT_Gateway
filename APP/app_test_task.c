@@ -1,11 +1,11 @@
 #include "app_test_task.h"
-
 #include <stdio.h>
 #include "FreeRTOS.h"
 #include "task.h"
 #include "cmsis_os.h"
 #include "uart_protocol.h"   /* ProtoFrame、CMD_* 枚举 */
 #include "uart2_driver.h"    /* g_uart2_* 统计计数器 */
+
 
 /*
  * 业务队列（由 freertos.c 创建，UART 生产者任务往里放完整帧，

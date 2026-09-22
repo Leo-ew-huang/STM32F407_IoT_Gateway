@@ -586,11 +586,6 @@
           <GroupName>APP</GroupName>
           <Files>
             <File>
-              <FileName>app_test_task.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\APP\app_test_task.c</FilePath>
-            </File>
-            <File>
               <FileName>at_test_task.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\APP\at_test_task.c</FilePath>
