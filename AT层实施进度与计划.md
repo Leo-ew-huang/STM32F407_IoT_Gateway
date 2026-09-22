@@ -113,10 +113,11 @@ esp8266_init OK → IP → TCP connected → MQTT connected
 suback: granted_qos=0 (OK)
 publish: hello 0 / rx: on / >> LED ON  ...
 ```
-翻车排查: `broker rejected rc=2`=clientID冲突(改ID); `expect CONNACK fail`=TCP通但MQTT握手没完成(看broker地址端口); 卡在 `publish` 后无后续=getdata 3s 超时属正常(无报文); 长时间无 publish = 可能被 keepalive 踢(检查 PINGRESP 分支)。
+翻车排查: `broker rejected rc=2`=clientID**格式非法**被拒(检查长度/字符, 不是撞号); 撞ID(与MQTTX或其他设备同名)的现象是**顶号**——CONNACK成功后互相踢线、反复重连, 改ID解决; `expect CONNACK fail`=TCP通但MQTT握手没完成(看broker地址端口); 卡在 `publish` 后无后续=getdata 3s 超时属正常(无报文)。
 
 ### 联调通过后可扩展（不急，做完可收官）
 - LED 真正接 GPIO（当前 printf 占位）
+- **低频上报时的主动保活**: 上报间隔接近 keepalive 时, 加"主动发PINGREQ→下轮read收PINGRESP"逻辑(规范MQTT-3.12.0-1: PINGREQ只能客户端→broker; broker收到任何报文都重置计时器)
 - QoS1 + PUBACK / 断线重连（识别 ALREADY CONNECT）/ at_net_recv 环扩容
 - 工程复盘：把 Handoff 文档收个尾，整理"从点灯到上云"的架构讲解稿
 

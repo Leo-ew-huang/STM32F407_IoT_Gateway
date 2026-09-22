@@ -196,14 +196,10 @@ void app_mqtt_task(void *argument)
                 else if (payloadlen == 3 && memcmp(payload_in, "off", 3) == 0)
                     printf(">> LED OFF (TODO: GPIO)\r\n");
             }
-            else if (type == PINGREQ)
-            {
-                /* broker 在 keepalive 窗口没看到你的报文时发这个。
-                 * ★ 必须回 PINGRESP, 否则 90 秒后被踢下线 */
-                len = MQTTSerialize_pingresp(buf, sizeof(buf));
-                transport_sendPacketBuffer(0, buf, len);
-            }
-            /* type<=0: 本轮 3s 无报文 → 忽略 */
+            /* type<=0: 本轮 3s 无报文 → 忽略。
+             * 保活说明: 当前每5s的PUBLISH本身就是报文, broker收到任何报文都会
+             * 重置keepalive计时器, 无需PINGREQ/PINGRESP。将来上报频率降到接近
+             * keepalive时, 才需要"主动发PINGREQ→等PINGRESP"(记入扩展清单)。 */
 
             vTaskDelay(pdMS_TO_TICKS(2000));
             /* 节奏: publish+听 ≈ 每 5s 一轮 << keepalive 60s, 保活无忧 */
