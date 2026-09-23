@@ -22,6 +22,76 @@
 #include <stdio.h>
 #include <string.h>
 
+
+/*
+ * 设备命令表: 表驱动分发的核心。
+ * 新增设备 = 这里加一行 + 在 BSP 写 on/off 两个函数, 主循环永不改动。
+ * 注意: dev_cmd_t 定义在 app_mqtt.h, 与 transport 函数声明同处一个头。
+ */
+static const dev_cmd_t g_dev_cmd_table[] =
+{
+    { "led",    led_on,    led_off    },
+    { "buzzer", buzzer_on, buzzer_off },
+};
+
+/*
+ * 表驱动命令分发: payload 形如 "led on" / "buzzer off"。
+ * 四步: 拷贝 → 切词(按空格) → 查表(strcmp) → 执行(handler)。
+ *
+ * 为什么先拷贝: payload 指向 buf 内部, 只有 len 个字节合法, 且【没有'\0'
+ * 结尾】—— 直接 strchr/strcmp 会越界扫描; 且后续要写 '\0' 切词, 不能在
+ * 只读的原始缓冲上动刀。所以先拷进自己的 temp 并手动补终止符。
+ */
+static void dev_cmd_exec(const char *payload, int len)
+{
+    int i;
+    int n = sizeof(g_dev_cmd_table) / sizeof(g_dev_cmd_table[0]);  /* 条目数自动跟随表长 */
+    char *index, *dev, *cmd;
+    char temp[32];
+
+    /* 1) 拷贝: 越界防护 + memcpy + 手动补 '\0'(三件套缺一不可) */
+    if (len <= 0 || len >= (int)sizeof(temp))
+        return;
+    memcpy(temp, payload, len);
+    temp[len] = '\0';
+
+    /* 2) 切词: 第一个空格处截断 → dev=temp, cmd=空格后 */
+    index = strchr(temp, ' ');
+    if (index == NULL)          /* 没有空格: 如只发了 "on", 格式不对 */
+    {
+        printf("bad cmd, use: <dev> <on|off>\r\n");
+        return;
+    }
+    *index = '\0';
+    dev = temp;
+    cmd = index + 1;
+
+    /* 3)+4) 查表 + 执行: 全表走完都不匹配才报未知(提示在循环外) */
+    for (i = 0; i < n; i++)
+    {
+        if (strcmp(dev, g_dev_cmd_table[i].dev) != 0)
+            continue;           /* 不是这个设备, 看下一项 */
+
+        /* 设备匹配: 处理动作 */
+        if (strcmp(cmd, "on") == 0)
+        {
+            g_dev_cmd_table[i].on();
+            return;
+        }
+        if (strcmp(cmd, "off") == 0)
+        {
+            g_dev_cmd_table[i].off();
+            return;
+        }
+        printf("cmd not support: %s (dev=%s, use on/off)\r\n", cmd, dev);
+        return;
+    }
+
+    /* 循环正常退出 i==n: 全表无此设备。注意退出值边界: 是 i>=n 而非 i>n */
+    printf("dev not support: %s (use: led, buzzer)\r\n", dev);
+}
+
+
 /*=====================================================================
  * A. transport 桥接 —— Paho 通过这 3 个函数触达网络
  *=====================================================================*/
@@ -194,28 +264,8 @@ void app_mqtt_task(void *argument)
                                         buf, sizeof(buf));
                 printf("rx: %.*s\r\n", payloadlen, (const char *)payload_in);
 
-                /* TODO(以后): 接 LED GPIO, 收 "on"/"off" 点灯。
-                 * 当前工程未配置 LED 引脚, 先用 printf 表达意图 */
-                if (payloadlen == 2 && memcmp(payload_in, "on", 2) == 0)
-                {
-                    led_on();
-                    printf(">> LED ON  (TODO: GPIO)\r\n");
-                }
-                else if (payloadlen == 3 && memcmp(payload_in, "off", 3) == 0)
-                {
-                    led_off();
-                    printf(">> LED OFF (TODO: GPIO)\r\n");
-                }
-                else if (payloadlen == 9 && memcmp(payload_in, "buzzer on", 9) == 0)
-                {
-                    buzzer_on();
-                    printf(">> Buzzer ON (TODO: GPIO)\r\n");
-                }
-                else if (payloadlen == 10 && memcmp(payload_in, "buzzer off", 10) == 0)
-                {
-                    buzzer_off();
-                    printf(">> Buzzer OFF (TODO: GPIO)\r\n");
-                }    
+                /* 注意区分: payload=发送缓冲("hello N"), payload_in=收到的命令("led on") */
+                dev_cmd_exec((const char *)payload_in, payloadlen);
             }
             /* type<=0: 本轮 3s 无报文 → 忽略。
              * 保活说明: 当前每5s的PUBLISH本身就是报文, broker收到任何报文都会
