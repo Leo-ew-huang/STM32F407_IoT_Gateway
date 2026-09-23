@@ -95,17 +95,26 @@ at_socket/  百问网参考库(不进编译)
 
 ## 五、当前任务（下一步）
 
-（AT-16 已完成：MQTT 下行控灯闭环 + MQTT 生态验证，见第四节。当前优先级：**表驱动重构作业 → 公司接线 → 下一模块**）
+（AT-17 表驱动重构**代码完成**(261bf02, 未上板验收)；DHT11 模块**开工**(BSP 骨架进行中)。当前优先级：**回家验收表驱动 → DHT11 BSP 原语 → DHT11 时序 → 上云**）
 
-### 公司环境：接线
-明天把核心板插回底板/重新引线接好 ESP8266（底板蜂鸣器随之恢复可达，bsp_buzzer 换引脚只动一行）。
+### 回家第一棒：MQTTX 验收表驱动（约2分钟）
+发 `led on` / `buzzer off` → 控灯控喇叭；发 `led abc` → `cmd not support`；发 `fan on` → `dev not support: fan`；发 `hello`(无空格) → `bad cmd`。四条过 = AT-17 验收。
 
-### 遗留作业（优先级最高）：命令表驱动重构
-else-if 链 → `dev_cmd_t` 查表分发：payload 按空格切词（dev + arg）→ 遍历 g_cmd_table → handler 执行。
-验收：MQTTX 发 `led on` / `buzzer off`；此后新设备 = 表加一行 + 一个 handler，主循环永不再改。
-注意：`payload_in` 非 NUL 结尾，处理前先按长度拷到局部数组（ strstr 坑的近亲）。
+### 公司接线（待办）
+核心板插回底板/重新引线接好 ESP8266（底板蜂鸣器恢复可达，bsp_buzzer 换引脚只动一行）。
 
-### 下一模块候选（表驱动完成后按兴趣选）
+### DHT11 温湿度上云（进行中，新模块）
+- 硬件: **模块板3针(自带上拉), DATA=PC2**；CubeMX 已配(.ioc/gpio.c 已改)；3 个 datasheet PDF 留本地不入库
+- 协议认知已建立: 单总线空闲态=高(上拉电阻兜底)；主机拉低18ms起始→DHT拉低80us+高80us应答→40bit(湿度整/湿小/温整/温小/校验和), 每bit=50us低+高电平宽度区分(26-28us=0, 70us=1)
+- BSP/bsp_dht11.h **已定稿**: 宏(DHT11_PORT/DHT11_PIN) + 只暴露 dht11_read(uint8_t*,uint8_t*)——5个原语(set_output/set_input/drive_high/drive_low/read_pin)按"头文件最小承诺"原则**收进.c加static**(用户自己提出的封装问题, 同 at_port_uart2 static 哲学)
+- **下一步(回家从这里继续): 写 bsp_dht11.c**:
+  1. 5个static原语函数体(HAL_GPIO_WritePin/ReadPin + MODER寄存器方向切换: GPIO_PIN_2占MODER bit4-5, 00输入01输出, 用 &=~ 和 |= 只动2位)
+  2. us级延时(DWT周期计数器方案: CoreDebug->DEMCR |= TRACEENA; DWT->CYCCNT清零; 用 SystemCoreClock 换算——vTaskDelay 1ms粒度不够用)
+  3. dht11_read 时序: 起始(拉低18ms→释放)→应答检测(80us低+80us高, 带超时!)→40bit逐位读(等低结束→掐高电平宽度>40us=1)→校验(前4字节和低8位==第5字节)→湿度=b[0] 温度=b[2]
+  4. 坑位提醒: 读40bit进临界区(taskENTER_CRITICAL, 全程~4ms可接受); 所有等电平变化必须带超时兜底; 两次读取间隔>1s(DHT11采样率1Hz)
+- 之后: APP层加 f407/sensor/dht11 主题周期上报 + Python paho-mqtt 消费 → (可选)InfluxDB+Grafana
+
+### 下一模块候选（DHT11 之后按兴趣选）
 - **DHT11 温湿度上云**（单总线时序）→ Python paho-mqtt 订阅消费 → InfluxDB+Grafana 曲线面板
 - OLED 状态面板（I2C：显示 IP/MQTT状态/温湿度）
 - 红外遥控（定时器输入捕获 + NEC 解码，遥控器控灯）
