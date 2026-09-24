@@ -19,6 +19,7 @@
 #include "semphr.h"
 #include "bsp_led.h"
 #include "bsp_buzzer.h"
+#include "bsp_dht11.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -141,7 +142,9 @@ int transport_close(int sock)
 #define MQTT_BROKER_PORT  1883
 #define MQTT_CLIENT_ID    "f407-board-01"   /* ★全网唯一: 重复ID会被broker踢旧的 */
 #define TOPIC_PUB         "f407/board/hello"    /* 板子→世界: 每5秒报个到 */
-#define TOPIC_SUB         "f407/led/control"    /* 世界→板子: 收 "on"/"off" */
+#define TOPIC_SUB         "f407/led/control"    /* 世界→板子: 收 "设备 动作" 命令 */
+#define TOPIC_SENSOR      "f407/sensor/dht11"   /* 板子→世界: DHT11 温湿度上报 */
+
 
 void app_mqtt_task(void *argument)
 {
@@ -236,8 +239,30 @@ void app_mqtt_task(void *argument)
         MQTTString pub_topic = MQTTString_initializer;
         pub_topic.cstring = TOPIC_PUB;
 
+        MQTTString sensor_topic = MQTTString_initializer;
+        sensor_topic.cstring = TOPIC_SENSOR;
+
         for (;;)
         {
+            /* a0) DHT11 温湿度上报: 读失败(超时/校验错)就跳过本轮, 别发垃圾上云。
+             *     读取含18ms起始+4ms时序, 全程~25ms << 5s周期, DHT11采样率(1Hz)也满足 */
+            uint8_t dht_temp, dht_humi;
+            if (dht11_read(&dht_temp, &dht_humi) == 0)
+            {
+                char sensor_payload[32];
+                int sensor_len = snprintf(sensor_payload, sizeof(sensor_payload),
+                                          "temp:%u,humi:%u", dht_temp, dht_humi);
+                len = MQTTSerialize_publish(buf, sizeof(buf), 0, 0, 0, 0,
+                                            sensor_topic, (unsigned char *)sensor_payload,
+                                            sensor_len);
+                transport_sendPacketBuffer(0, buf, len);
+                printf("publish sensor: %s\r\n", sensor_payload);
+            }
+            else
+            {
+                printf("dht11 read fail, skip this round\r\n");
+            }
+
             /* a) PUBLISH: QoS0 报个到。QoS0 无需 PUBACK, 发完即忘 */
             char payload[32];
             int payloadlen = snprintf(payload, sizeof(payload),

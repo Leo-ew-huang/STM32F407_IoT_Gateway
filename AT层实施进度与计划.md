@@ -103,16 +103,16 @@ at_socket/  百问网参考库(不进编译)
 ### 公司接线（待办）
 核心板插回底板/重新引线接好 ESP8266（底板蜂鸣器恢复可达，bsp_buzzer 换引脚只动一行）。
 
-### DHT11 温湿度上云（进行中，新模块）
-- 硬件: **模块板3针(自带上拉), DATA=PC2**；CubeMX 已配(.ioc/gpio.c 已改)；3 个 datasheet PDF 留本地不入库
-- 协议认知已建立: 单总线空闲态=高(上拉电阻兜底)；主机拉低18ms起始→DHT拉低80us+高80us应答→40bit(湿度整/湿小/温整/温小/校验和), 每bit=50us低+高电平宽度区分(26-28us=0, 70us=1)
-- BSP/bsp_dht11.h **已定稿**: 宏(DHT11_PORT/DHT11_PIN) + 只暴露 dht11_read(uint8_t*,uint8_t*)——5个原语(set_output/set_input/drive_high/drive_low/read_pin)按"头文件最小承诺"原则**收进.c加static**(用户自己提出的封装问题, 同 at_port_uart2 static 哲学)
-- **下一步(回家从这里继续): 写 bsp_dht11.c**:
-  1. 5个static原语函数体(HAL_GPIO_WritePin/ReadPin + MODER寄存器方向切换: GPIO_PIN_2占MODER bit4-5, 00输入01输出, 用 &=~ 和 |= 只动2位)
-  2. us级延时(DWT周期计数器方案: CoreDebug->DEMCR |= TRACEENA; DWT->CYCCNT清零; 用 SystemCoreClock 换算——vTaskDelay 1ms粒度不够用)
-  3. dht11_read 时序: 起始(拉低18ms→释放)→应答检测(80us低+80us高, 带超时!)→40bit逐位读(等低结束→掐高电平宽度>40us=1)→校验(前4字节和低8位==第5字节)→湿度=b[0] 温度=b[2]
-  4. 坑位提醒: 读40bit进临界区(taskENTER_CRITICAL, 全程~4ms可接受); 所有等电平变化必须带超时兜底; 两次读取间隔>1s(DHT11采样率1Hz)
-- 之后: APP层加 f407/sensor/dht11 主题周期上报 + Python paho-mqtt 消费 → (可选)InfluxDB+Grafana
+### DHT11 温湿度上云（代码完成，待上板验收）
+- 硬件: **模块板3针(自带上拉), DATA=PC2**；CubeMX 已配；DWT_Init 已在 main 调用(bsp_dht11.c 内还有幂等兜底)；3 个 datasheet PDF 留本地不入库
+- **BSP/bsp_dht11.c 完成**(agent 融合参考代码+工程修正): DWT us延时 / MODER方向切换 / 应答三段检测(等低开始→等低结束→等高结束, 每段超时200us兜底) / 40bit两段读(等低结束150us→掐高宽度150us, >40us判1) / 校验(和&0xFF, 注意!=优先级高于&要括号) / val每字节清零 / DHT11读取全程临界区(起始18ms在区外vTaskDelay)
+- **APP/app_mqtt.c 完成**(agent加): TOPIC_SENSOR宏 + 主循环a0块(dht11_read成功→publish "temp:%u,humi:%u"到f407/sensor/dht11; 失败→打印跳过, hello照发)
+- 关键认知(用户已过关): "80us是电平保持时长, 不是等待时长"; 等待循环三要素=while条件(当前状态)+循环体(超时看守)+阈值(保持时长+余量); 单总线"打破空闲靠拉低, 恢复空闲靠撒手(上拉接管)"
+- **上板验收剧本(回家)**:
+  1. 正常: MQTTX 订阅 f407/sensor/dht11 → 每5s收 temp:XX,humi:XX
+  2. 容错: 拔DATA线 → 串口 "DHT11 no response"+"dht11 read fail, skip this round", 但hello照发、LED命令照响(超时兜底没挂死)
+  3. 插回 → 数据恢复
+- 之后(可选): Python paho-mqtt 订阅 f407/sensor/dht11 打印/存档 → (可选)InfluxDB+Grafana 曲线面板
 
 ### 下一模块候选（DHT11 之后按兴趣选）
 - **DHT11 温湿度上云**（单总线时序）→ Python paho-mqtt 订阅消费 → InfluxDB+Grafana 曲线面板
